@@ -92,6 +92,7 @@ export default function PacientePerfilPage({ params }: { params: Promise<{ id: s
           pacienteNombre={`${paciente.nombres} ${paciente.apellidos}`}
           pacienteSexo={paciente.sexo}
           historiaId={historia.id}
+          historia={historia}
         />
       )}
 

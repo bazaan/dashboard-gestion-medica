@@ -6,13 +6,16 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import {
   X, Syringe, Loader2, Clock, Calendar,
   Check, ChevronDown, ChevronUp, ClipboardList,
-  CalendarClock,
+  CalendarClock, Stethoscope,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { consultaSchema, type ConsultaFormData } from "@/lib/schemas/consulta.schema";
 import { useCrearConsulta, useTratamientosCatalogo } from "@/lib/hooks/useConsultas";
-import { CATEGORIA_LABELS, type TratamientoCategoria } from "@/types/database.types";
+import { CATEGORIA_LABELS, type TratamientoCategoria, type HistoriaClinica } from "@/types/database.types";
+import {
+  HistoriaFormFields, HistoriaFormState, historiaToForm, formToDbPayload, FORM_EMPTY,
+} from "./HistoriaClinicaForm";
 
 interface Props {
   open: boolean;
@@ -22,16 +25,21 @@ interface Props {
   pacienteNombre: string;
   pacienteSexo: string | null;
   historiaId: string;
+  historia?: HistoriaClinica; // para pre-llenar antecedentes
 }
 
 export function NuevaConsultaDrawer({
   open, onClose, onSuccess,
-  pacienteId, pacienteNombre, pacienteSexo, historiaId,
+  pacienteId, pacienteNombre, pacienteSexo, historiaId, historia,
 }: Props) {
   const [selectedTratamientos, setSelectedTratamientos] = useState<string[]>([]);
   const [doctorId, setDoctorId]   = useState("");
   const [clinicaOpen, setClinicaOpen] = useState(false);
+  const [historiaOpen, setHistoriaOpen] = useState(false);
   const [catSearch, setCatSearch] = useState("");
+  const [historiaForm, setHistoriaForm] = useState<HistoriaFormState>(
+    () => historia ? historiaToForm(historia) : FORM_EMPTY
+  );
 
   const crearConsulta = useCrearConsulta();
   const { data: tratamientos = [] } = useTratamientosCatalogo();
@@ -116,11 +124,23 @@ export function NuevaConsultaDrawer({
       tratamiento_ids:         selectedTratamientos,
     });
 
+    // Si la sección de historia clínica fue abierta, guardar los cambios
+    if (historiaOpen) {
+      const supabase = createClient();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (supabase as any)
+        .from("historias_clinicas")
+        .update(formToDbPayload(historiaForm))
+        .eq("id", historiaId);
+    }
+
     reset();
     setSelectedTratamientos([]);
     setValue("tratamiento_ids", []);
     setCatSearch("");
     setClinicaOpen(false);
+    setHistoriaOpen(false);
+    setHistoriaForm(historia ? historiaToForm(historia) : FORM_EMPTY);
     onSuccess();
     onClose();
   }
@@ -378,6 +398,28 @@ export function NuevaConsultaDrawer({
                       className={`${inputCls} resize-none`} placeholder="Cuidados, restricciones…" />
                   </div>
 
+                </div>
+              )}
+            </div>
+
+            {/* ── Historia Clínica del paciente (colapsable) ── */}
+            <div className="border border-border rounded-xl overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setHistoriaOpen(v => !v)}
+                className={`w-full flex items-center gap-3 px-4 py-3.5 text-left transition-colors ${historiaOpen ? "bg-muted/40" : "hover:bg-muted/20"}`}
+              >
+                <Stethoscope className="w-4 h-4 text-primary/60 shrink-0" />
+                <span className="flex-1 text-sm font-medium text-foreground">Historia clínica del paciente</span>
+                <span className="text-xs text-muted-foreground mr-1">Antecedentes, signos vitales…</span>
+                {historiaOpen ? <ChevronUp className="w-4 h-4 text-muted-foreground shrink-0" /> : <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />}
+              </button>
+              {historiaOpen && (
+                <div className="px-4 pb-5 pt-3 border-t border-border/60">
+                  <p className="text-xs text-muted-foreground mb-4">
+                    Los cambios realizados aquí actualizarán la historia base del paciente al guardar la consulta.
+                  </p>
+                  <HistoriaFormFields form={historiaForm} setForm={setHistoriaForm} />
                 </div>
               )}
             </div>
