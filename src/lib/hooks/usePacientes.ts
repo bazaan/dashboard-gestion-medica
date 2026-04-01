@@ -14,7 +14,7 @@ export function usePacientes(search?: string) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let query = (supabase as any)
         .from("pacientes")
-        .select("id, numero_historia, nombres, apellidos, dni, telefono, email, estado, updated_at, created_at")
+        .select("*")
         .order("updated_at", { ascending: false });
 
       if (search && search.trim().length > 0) {

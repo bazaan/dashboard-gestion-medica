@@ -84,9 +84,10 @@ Los tipos TypeScript de las tablas se definen manualmente en `src/types/database
 npx supabase gen types typescript --project-id wnbamzjieowfqcowppxc > src/types/database.types.ts
 ```
 
-**Schema en dos partes** (ambos ya ejecutados en producción):
+**Schema en tres partes** (todas ejecutadas en producción):
 - `supabase/schema.sql` — tablas base
 - `supabase/migration_v2.sql` — sistema completo de renovaciones y recordatorios
+- `supabase/migration_v3.sql` — formulario médico completo en `historias_clinicas`: signos vitales (`fc`, `fr`, `pa`, `imc`, `rq`, `asa`), filiación (`religion`, `estado_civil`, `grado_instruccion`, `procedencia`), anamnesis, antecedentes fisiológicos, patológicos (`ant_patologicos[]`), alergias (`alergias_medicamentos[]`), fármacos (`farmacos_lista[]`), quirúrgicos y familiares
 
 **Tablas principales**: `profiles`, `pacientes`, `citas`, `tratamientos_catalogo`, `historias_clinicas`, `evoluciones_clinicas`, `procedimientos_consulta`, `seguimientos_renovacion`, `recordatorios_log`, `fotos_antes_despues`, `audit_log`
 
@@ -249,7 +250,7 @@ Los tokens de Tailwind se definen en `globals.css` y se usan directamente como c
 1. **Resolver entrega de templates MARKETING** — Opción A: verificar `+51 936 196 001` con OTP vía Meta API (`POST /{phone_number_id}/request_code`). Opción B: re-someter `0d`, `7d`, `30d` como UTILITY en Meta Business Manager (1-2 días aprobación).
 2. **Deploy reminders-service a Railway** — copiar variables de `reminders-service/.env` al proyecto Railway
 3. **Deploy dashboard a Netlify** — push a main branch
-4. **CRUD Pacientes completo** — edición y eliminación (`NuevoPacienteDrawer` y `pacienteSchema` ya existen, falta modo edición)
+4. ~~**CRUD Pacientes completo**~~ — ✅ implementado (edición y eliminación en `NuevoPacienteDrawer`)
 5. **Middleware de autenticación** — activar `src/proxy.ts` renombrándolo a `src/middleware.ts`
 
 > Ver `PROYECTO.md` para la bitácora completa, arquitectura del sistema y notas técnicas detalladas.

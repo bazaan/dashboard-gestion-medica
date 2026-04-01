@@ -114,7 +114,28 @@ export interface Database {
           motivo_consulta_inicial: string | null; antecedentes_esteticos: string | null
           expectativas_paciente: string | null; tipo_piel: TipoPiel | null
           fototipo_fitzpatrick: number | null; condiciones_piel: string[]
-          abierta_por: string | null; created_at: string; updated_at: string
+          // Signos vitales
+          fc: string | null; fr: string | null; pa: string | null
+          imc: string | null; rq: string | null; asa: string | null
+          // Filiación adicional
+          religion: string | null; estado_civil: string | null
+          grado_instruccion: string | null; procedencia: string | null
+          // Anamnesis
+          tiempo_enfermedad: string | null
+          // Antecedentes fisiológicos
+          gestacion_g: string | null; gestacion_p: string | null
+          menarquia: string | null; fur_historia: string | null; rc: string | null
+          apetito: string | null; sed: string | null; diuresis: string | null
+          deposiciones: string | null; peso_kg: string | null; talla: string | null
+          sueno: string | null; ultima_ingesta: string | null
+          alcohol: boolean; tabaco: boolean; drogas: boolean
+          // Antecedentes patológicos, alergias, fármacos
+          ant_patologicos: string[]; ant_patologicos_otros: string | null
+          alergias_medicamentos: string[]; alergias_med_otros: string | null
+          farmacos_lista: string[]; farmacos_otros: string | null
+          // Quirúrgicos y familiares
+          ant_quirurgicos: string | null; ant_familiares: string | null
+          abierta_por: string | null; is_locked: boolean; created_at: string; updated_at: string
         }
         Insert: Omit<Database['public']['Tables']['historias_clinicas']['Row'], 'id' | 'created_at' | 'updated_at'>
           & { id?: string; created_at?: string; updated_at?: string }
