@@ -65,6 +65,8 @@ export interface Database {
           fecha_nacimiento: string; sexo: Sexo | null
           direccion: string | null; distrito: string | null
           ciudad: string; pais: string; ocupacion: string | null
+          religion: string | null; estado_civil: string | null
+          grado_instruccion: string | null; procedencia: string | null
           grupo_sanguineo: string | null; alergias: string[]
           antecedentes_medicos: string | null; medicamentos_actuales: string | null
           consentimiento_datos: boolean; consentimiento_fecha: string | null

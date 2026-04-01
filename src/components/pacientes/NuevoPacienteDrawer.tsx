@@ -73,6 +73,10 @@ export function NuevoPacienteDrawer({ open, onClose, onSuccess, paciente }: Prop
         fecha_nacimiento:      paciente.fecha_nacimiento,
         sexo:                  (paciente.sexo as "F" | "M" | "otro") || undefined,
         ocupacion:             paciente.ocupacion || "",
+        religion:              paciente.religion || "",
+        estado_civil:          paciente.estado_civil || "",
+        grado_instruccion:     paciente.grado_instruccion || "",
+        procedencia:           paciente.procedencia || "",
         telefono:              paciente.telefono,
         telefono_alt:          paciente.telefono_alt || "",
         email:                 paciente.email || "",
@@ -122,6 +126,10 @@ export function NuevoPacienteDrawer({ open, onClose, onSuccess, paciente }: Prop
       distrito:              data.distrito || null,
       ciudad:                data.ciudad || "Lima",
       ocupacion:             data.ocupacion || null,
+      religion:              data.religion || null,
+      estado_civil:          data.estado_civil || null,
+      grado_instruccion:     data.grado_instruccion || null,
+      procedencia:           data.procedencia || null,
       grupo_sanguineo:       data.grupo_sanguineo || null,
       alergias,
       antecedentes_medicos:  data.antecedentes_medicos || null,
@@ -256,6 +264,18 @@ export function NuevoPacienteDrawer({ open, onClose, onSuccess, paciente }: Prop
                 </Field>
                 <Field label="Ocupación" error={errors.ocupacion?.message}>
                   <input {...register("ocupacion")} placeholder="Empresaria" className="input-premium" />
+                </Field>
+                <Field label="Estado Civil" error={errors.estado_civil?.message}>
+                  <input {...register("estado_civil")} placeholder="Soltero/a, Casado/a…" className="input-premium" />
+                </Field>
+                <Field label="Religión" error={errors.religion?.message}>
+                  <input {...register("religion")} className="input-premium" />
+                </Field>
+                <Field label="Grado de Instrucción" error={errors.grado_instruccion?.message}>
+                  <input {...register("grado_instruccion")} placeholder="Técnico, Superior…" className="input-premium" />
+                </Field>
+                <Field label="Procedencia" error={errors.procedencia?.message}>
+                  <input {...register("procedencia")} className="input-premium" />
                 </Field>
               </div>
             </section>

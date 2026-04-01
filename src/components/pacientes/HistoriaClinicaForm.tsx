@@ -34,7 +34,6 @@ export const FARMACOS_LIST_ITEMS = [
 export type HistoriaFormState = {
   motivo: string; antecedentes: string; expectativas: string;
   tipo_piel: string; fototipo: string;
-  religion: string; estado_civil: string; grado_instruccion: string; procedencia: string;
   fc: string; fr: string; pa: string; imc: string; rq: string; asa: string;
   tiempo_enfermedad: string;
   gestacion_g: string; gestacion_p: string; menarquia: string; fur_historia: string; rc: string;
@@ -49,7 +48,6 @@ export type HistoriaFormState = {
 
 export const FORM_EMPTY: HistoriaFormState = {
   motivo: "", antecedentes: "", expectativas: "", tipo_piel: "", fototipo: "",
-  religion: "", estado_civil: "", grado_instruccion: "", procedencia: "",
   fc: "", fr: "", pa: "", imc: "", rq: "", asa: "",
   tiempo_enfermedad: "",
   gestacion_g: "", gestacion_p: "", menarquia: "", fur_historia: "", rc: "",
@@ -69,10 +67,6 @@ export function historiaToForm(h: HistoriaClinica): HistoriaFormState {
     expectativas: h.expectativas_paciente ?? "",
     tipo_piel: h.tipo_piel ?? "",
     fototipo: h.fototipo_fitzpatrick ? String(h.fototipo_fitzpatrick) : "",
-    religion: h.religion ?? "",
-    estado_civil: h.estado_civil ?? "",
-    grado_instruccion: h.grado_instruccion ?? "",
-    procedencia: h.procedencia ?? "",
     fc: h.fc ?? "", fr: h.fr ?? "", pa: h.pa ?? "",
     imc: h.imc ?? "", rq: h.rq ?? "", asa: h.asa ?? "",
     tiempo_enfermedad: h.tiempo_enfermedad ?? "",
@@ -96,10 +90,6 @@ export function formToDbPayload(form: HistoriaFormState) {
     expectativas_paciente: form.expectativas || null,
     tipo_piel: form.tipo_piel || null,
     fototipo_fitzpatrick: form.fototipo ? parseInt(form.fototipo) : null,
-    religion: form.religion || null,
-    estado_civil: form.estado_civil || null,
-    grado_instruccion: form.grado_instruccion || null,
-    procedencia: form.procedencia || null,
     fc: form.fc || null, fr: form.fr || null, pa: form.pa || null,
     imc: form.imc || null, rq: form.rq || null, asa: form.asa || null,
     tiempo_enfermedad: form.tiempo_enfermedad || null,
@@ -270,30 +260,6 @@ export function HistoriaFormFields({
             placeholder="¿Qué resultado espera obtener?" className={INPUT_CLS} />
         </div>
       </div>
-
-      {/* ── Filiación adicional ── */}
-      <CollapsibleSection title="Filiación adicional" icon={Users}>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className={LABEL_CLS}>Religión</label>
-            <input type="text" value={form.religion} onChange={set("religion")} className={INPUT_CLS} />
-          </div>
-          <div>
-            <label className={LABEL_CLS}>Estado civil</label>
-            <input type="text" value={form.estado_civil} onChange={set("estado_civil")}
-              placeholder="Soltero/a, Casado/a…" className={INPUT_CLS} />
-          </div>
-          <div>
-            <label className={LABEL_CLS}>Grado de instrucción</label>
-            <input type="text" value={form.grado_instruccion} onChange={set("grado_instruccion")}
-              placeholder="Técnico, Superior…" className={INPUT_CLS} />
-          </div>
-          <div>
-            <label className={LABEL_CLS}>Procedencia</label>
-            <input type="text" value={form.procedencia} onChange={set("procedencia")} className={INPUT_CLS} />
-          </div>
-        </div>
-      </CollapsibleSection>
 
       {/* ── Signos vitales ── */}
       <CollapsibleSection title="Signos vitales" icon={Activity}>

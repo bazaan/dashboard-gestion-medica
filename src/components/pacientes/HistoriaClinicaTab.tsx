@@ -234,17 +234,6 @@ function HistoriaBaseCard({ historia }: { historia: HistoriaClinica }) {
               </div>
             </div>
           )}
-          {(historia.religion || historia.estado_civil || historia.grado_instruccion || historia.procedencia) && (
-            <div className="pt-2 border-t border-border/50">
-              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-2">Filiación adicional</p>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                {historia.religion && <><span className="text-muted-foreground">Religión</span><span>{historia.religion}</span></>}
-                {historia.estado_civil && <><span className="text-muted-foreground">Estado civil</span><span>{historia.estado_civil}</span></>}
-                {historia.grado_instruccion && <><span className="text-muted-foreground">Instrucción</span><span>{historia.grado_instruccion}</span></>}
-                {historia.procedencia && <><span className="text-muted-foreground">Procedencia</span><span>{historia.procedencia}</span></>}
-              </div>
-            </div>
-          )}
           {(historia.fc || historia.fr || historia.pa || historia.imc || historia.rq || historia.asa) && (
             <div className="pt-2 border-t border-border/50">
               <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-2">Signos vitales</p>
