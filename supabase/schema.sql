@@ -378,3 +378,4 @@ INSERT INTO tratamientos_catalogo (nombre, codigo, categoria, duracion_minutos, 
   ('IPL Fotorejuvenecimiento',       'IPL-001', 'laser',     60,  NULL, TRUE,  'Luz pulsada intensa para manchas y rojeces'),
   ('Seguimiento Post-Tratamiento',   'SEG-001', 'evaluacion',20,  NULL, FALSE, 'Control y seguimiento de resultado de tratamientos')
 ON CONFLICT (codigo) DO NOTHING;
+pu

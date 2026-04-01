@@ -1,8 +1,8 @@
 "use client";
 
 import {
-  LayoutDashboard, CalendarDays, Users, Settings,
-  LogOut, ChevronRight, X, Menu,
+  LayoutDashboard, Users, Settings,
+  LogOut, ChevronRight, X, Menu, Bell, Syringe, MessageSquareText,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -11,12 +11,15 @@ import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import type { Profile, UserRole } from "@/types/database.types";
 import { motion, AnimatePresence } from "framer-motion";
+import { useDashboardStats } from "@/lib/hooks/useDashboard";
 
 const NAV_LINKS = [
-  { name: "Panel",     href: "/",             icon: LayoutDashboard, roles: ["admin", "doctor", "recepcion"] as UserRole[] },
-  { name: "Pacientes", href: "/pacientes",     icon: Users,           roles: ["admin", "doctor", "recepcion"] as UserRole[] },
-  { name: "Agenda",    href: "/agenda",        icon: CalendarDays,    roles: ["admin", "doctor", "recepcion"] as UserRole[] },
-  { name: "Config",    href: "/configuracion", icon: Settings,        roles: ["admin"] as UserRole[] },
+  { name: "Panel",          href: "/",               icon: LayoutDashboard, roles: ["admin", "doctor", "recepcion"] as UserRole[] },
+  { name: "Pacientes",      href: "/pacientes",      icon: Users,           roles: ["admin", "doctor", "recepcion"] as UserRole[] },
+  { name: "Renovaciones",   href: "/renovaciones",   icon: Bell,            roles: ["admin", "doctor", "recepcion"] as UserRole[] },
+  { name: "Procedimientos", href: "/procedimientos", icon: Syringe,             roles: ["admin", "doctor"] as UserRole[] },
+  { name: "Plantillas WA",  href: "/plantillas",     icon: MessageSquareText,   roles: ["admin", "doctor"] as UserRole[] },
+  { name: "Config",         href: "/configuracion",  icon: Settings,            roles: ["admin"] as UserRole[] },
 ];
 
 const ROLE_LABELS: Record<UserRole, string> = {
@@ -36,12 +39,14 @@ function NavContent({
   pathname,
   onLogout,
   onClose,
+  urgentCount = 0,
 }: {
   profile: Profile;
   visibleLinks: typeof NAV_LINKS;
   pathname: string;
   onLogout: () => void;
   onClose?: () => void;
+  urgentCount?: number;
 }) {
   return (
     <>
@@ -87,8 +92,19 @@ function NavContent({
                   transition={{ type: "spring", stiffness: 400, damping: 30 }}
                 />
               )}
-              <Icon className={`w-4.5 h-4.5 transition-colors ${isActive ? "text-primary" : "text-white/40 group-hover:text-white/70"}`} />
-              <span className="flex-1">{link.name === "Panel" ? "Panel de Control" : link.name === "Config" ? "Configuración" : link.name}</span>
+              <div className="relative shrink-0">
+                <Icon className={`w-4.5 h-4.5 transition-colors ${isActive ? "text-primary" : "text-white/40 group-hover:text-white/70"}`} />
+                {link.href === "/renovaciones" && urgentCount > 0 && (
+                  <span className="absolute -top-1 -right-1.5 min-w-[14px] h-3.5 px-0.5 rounded-full bg-red-500 text-white text-[8px] font-bold flex items-center justify-center leading-none">
+                    {urgentCount > 9 ? "9+" : urgentCount}
+                  </span>
+                )}
+              </div>
+              <span className="flex-1">{
+                link.name === "Panel" ? "Panel de Control" :
+                link.name === "Config" ? "Configuración" :
+                link.name
+              }</span>
               {isActive && <ChevronRight className="w-3.5 h-3.5 text-primary/60" />}
             </Link>
           );
@@ -126,6 +142,8 @@ export function Sidebar({ profile }: { profile: Profile }) {
   const pathname = usePathname();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const { data: dashStats } = useDashboardStats();
+  const urgentCount = (dashStats?.vencidos ?? 0) + (dashStats?.proximosVencer7 ?? 0);
 
   const visibleLinks = NAV_LINKS.filter((l) => l.roles.includes(profile.role));
 
@@ -147,6 +165,7 @@ export function Sidebar({ profile }: { profile: Profile }) {
           visibleLinks={visibleLinks}
           pathname={pathname}
           onLogout={handleLogout}
+          urgentCount={urgentCount}
         />
       </aside>
 
@@ -176,13 +195,21 @@ export function Sidebar({ profile }: { profile: Profile }) {
         {visibleLinks.slice(0, 3).map((link) => {
           const isActive = link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
           const Icon = link.icon;
+          const showBadge = link.href === "/renovaciones" && urgentCount > 0;
           return (
             <Link
               key={link.href}
               href={link.href}
-              className="flex flex-col items-center gap-0.5 px-4 pt-2.5 pb-1 min-w-0"
+              className="flex flex-col items-center gap-0.5 px-4 pt-2.5 pb-1 min-w-0 relative"
             >
-              <Icon className={`w-5 h-5 transition-colors ${isActive ? "text-primary" : "text-white/35"}`} />
+              <div className="relative">
+                <Icon className={`w-5 h-5 transition-colors ${isActive ? "text-primary" : "text-white/35"}`} />
+                {showBadge && (
+                  <span className="absolute -top-1 -right-1.5 min-w-[14px] h-3.5 px-0.5 rounded-full bg-red-500 text-white text-[8px] font-bold flex items-center justify-center leading-none">
+                    {urgentCount > 9 ? "9+" : urgentCount}
+                  </span>
+                )}
+              </div>
               <span className={`text-[10px] font-medium transition-colors ${isActive ? "text-primary" : "text-white/35"}`}>
                 {link.name}
               </span>
@@ -222,6 +249,7 @@ export function Sidebar({ profile }: { profile: Profile }) {
                 pathname={pathname}
                 onLogout={handleLogout}
                 onClose={() => setMobileOpen(false)}
+                urgentCount={urgentCount}
               />
             </motion.aside>
           </>

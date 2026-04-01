@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useQueryClient } from "@tanstack/react-query";
 import { X, User, Phone, MapPin, Stethoscope, ShieldCheck, Loader2, ChevronRight } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
@@ -47,6 +48,7 @@ function Field({
 
 export function NuevoPacienteDrawer({ open, onClose, onSuccess }: Props) {
   const overlayRef = useRef<HTMLDivElement>(null);
+  const queryClient = useQueryClient();
 
   const {
     register,
@@ -116,6 +118,7 @@ export function NuevoPacienteDrawer({ open, onClose, onSuccess }: Props) {
     }
 
     toast.success(`Paciente ${data.nombres} ${data.apellidos} registrado correctamente`);
+    queryClient.invalidateQueries({ queryKey: ["pacientes"] });
     reset();
     onSuccess();
     onClose();
@@ -168,7 +171,7 @@ export function NuevoPacienteDrawer({ open, onClose, onSuccess }: Props) {
         </div>
 
         {/* Formulario scrolleable */}
-        <form onSubmit={handleSubmit(onSubmit)} className="flex-1 overflow-y-auto">
+        <form id="nuevo-paciente-form" onSubmit={handleSubmit(onSubmit)} className="flex-1 overflow-y-auto">
           <div className="px-8 py-6 space-y-8">
 
             {/* ── DATOS PERSONALES ── */}

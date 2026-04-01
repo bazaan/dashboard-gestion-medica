@@ -4,60 +4,29 @@ import { useState, use } from "react";
 import Link from "next/link";
 import {
   ArrowLeft, User, Phone, MapPin, Stethoscope, Camera,
-  CalendarDays, BadgeCheck, Mail, ChevronRight,
+  CalendarDays, BadgeCheck, Mail, ChevronRight, Loader2,
+  Plus, AlertCircle,
 } from "lucide-react";
 import { FotosTimeline } from "@/components/pacientes/FotosTimeline";
 import { HistoriaClinicaTab } from "@/components/pacientes/HistoriaClinicaTab";
-
-// Datos demo — en producción vendrán de Supabase por params.id
-const DEMO_PACIENTE = {
-  id: "demo-id",
-  numero_historia: "HC-2025-00001",
-  nombres: "María",
-  apellidos: "González Paredes",
-  dni: "45871236",
-  email: "maria.gonzalez@email.com",
-  telefono: "+51 987 654 321",
-  telefono_alt: "+51 912 345 678",
-  fecha_nacimiento: "1985-04-12",
-  sexo: "F",
-  direccion: "Av. Javier Prado Este 1234",
-  distrito: "Miraflores",
-  ciudad: "Lima",
-  ocupacion: "Empresaria",
-  grupo_sanguineo: "A+",
-  alergias: ["Penicilina"],
-  antecedentes_medicos: "Hipertensión controlada",
-  medicamentos_actuales: "Losartán 50mg",
-  estado: "vip",
-  sesiones: 8,
-  ultimo_tratamiento: "Hilos Delta Lifting®",
-  created_at: "2024-01-15",
-};
+import { NuevaConsultaDrawer } from "@/components/pacientes/NuevaConsultaDrawer";
+import { usePaciente, calcularEdad, getInitials } from "@/lib/hooks/usePacientes";
+import { useHistoriaClinica } from "@/lib/hooks/useConsultas";
 
 const TABS = [
-  { id: "info", label: "Información", icon: User },
-  { id: "fotos", label: "Fotos & Evolución", icon: Camera },
-  { id: "historia", label: "Historia Clínica", icon: Stethoscope },
-  { id: "citas", label: "Citas", icon: CalendarDays },
+  { id: "fotos",   label: "Fotos & Evolución",  icon: Camera      },
+  { id: "historia",label: "Historia Clínica",    icon: Stethoscope },
+  { id: "info",    label: "Información",          icon: User        },
+  { id: "citas",   label: "Citas",               icon: CalendarDays},
 ];
 
 const ESTADO_CONFIG: Record<string, { label: string; class: string }> = {
-  vip: { label: "VIP", class: "bg-primary/10 text-primary border-primary/20" },
-  activo: { label: "Activo", class: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+  vip:      { label: "VIP",      class: "bg-primary/10 text-primary border-primary/20" },
+  activo:   { label: "Activo",   class: "bg-emerald-50 text-emerald-700 border-emerald-200" },
   inactivo: { label: "Inactivo", class: "bg-slate-50 text-slate-500 border-slate-200" },
 };
 
-function calcularEdad(fechaNacimiento: string) {
-  const hoy = new Date();
-  const nacimiento = new Date(fechaNacimiento);
-  let edad = hoy.getFullYear() - nacimiento.getFullYear();
-  const m = hoy.getMonth() - nacimiento.getMonth();
-  if (m < 0 || (m === 0 && hoy.getDate() < nacimiento.getDate())) edad--;
-  return edad;
-}
-
-function InfoRow({ label, value, icon: Icon }: { label: string; value: string; icon?: React.ElementType }) {
+function InfoRow({ label, value, icon: Icon }: { label: string; value?: string | null; icon?: React.ElementType }) {
   if (!value) return null;
   return (
     <div className="flex items-start gap-3 py-3 border-b border-border/50 last:border-0">
@@ -72,16 +41,59 @@ function InfoRow({ label, value, icon: Icon }: { label: string; value: string; i
 
 export default function PacientePerfilPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const [activeTab, setActiveTab] = useState("fotos");
+  const [activeTab, setActiveTab]         = useState("fotos");
+  const [consultaDrawerOpen, setConsultaDrawerOpen] = useState(false);
 
-  // En producción: fetchear paciente por id desde Supabase
-  const p = DEMO_PACIENTE;
-  const estadoConfig = ESTADO_CONFIG[p.estado] ?? ESTADO_CONFIG.activo;
-  const edad = calcularEdad(p.fecha_nacimiento);
-  const initials = `${p.nombres[0]}${p.apellidos[0]}`;
+  const { data: paciente, isLoading, error } = usePaciente(id);
+  const { data: historia } = useHistoriaClinica(id);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="flex flex-col items-center gap-3 text-muted-foreground">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          <p className="text-sm">Cargando perfil del paciente…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !paciente) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center max-w-sm">
+          <AlertCircle className="w-12 h-12 text-red-300 mx-auto mb-4" />
+          <h3 className="font-serif text-lg font-semibold mb-2">Paciente no encontrado</h3>
+          <p className="text-sm text-muted-foreground mb-4">
+            No se pudo cargar el perfil. Verifica que el paciente exista.
+          </p>
+          <Link href="/pacientes" className="btn-primary text-sm inline-flex">
+            <ArrowLeft className="w-4 h-4" /> Volver a Pacientes
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  const estadoConfig = ESTADO_CONFIG[paciente.estado] ?? ESTADO_CONFIG.activo;
+  const edad    = calcularEdad(paciente.fecha_nacimiento);
+  const initials = getInitials(paciente.nombres, paciente.apellidos);
 
   return (
     <div className="min-h-full bg-background">
+
+      {/* Drawer nueva consulta */}
+      {historia && (
+        <NuevaConsultaDrawer
+          open={consultaDrawerOpen}
+          onClose={() => setConsultaDrawerOpen(false)}
+          onSuccess={() => setConsultaDrawerOpen(false)}
+          pacienteId={id}
+          pacienteNombre={`${paciente.nombres} ${paciente.apellidos}`}
+          pacienteSexo={paciente.sexo}
+          historiaId={historia.id}
+        />
+      )}
 
       {/* Header */}
       <header className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b border-border">
@@ -94,12 +106,23 @@ export default function PacientePerfilPage({ params }: { params: Promise<{ id: s
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Link href="/pacientes" className="hover:text-foreground transition-colors">Pacientes</Link>
               <ChevronRight className="w-3.5 h-3.5" />
-              <span className="text-foreground font-medium">{p.nombres} {p.apellidos}</span>
+              <span className="text-foreground font-medium">{paciente.nombres} {paciente.apellidos}</span>
             </div>
           </div>
-          <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${estadoConfig.class}`}>
-            {estadoConfig.label}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${estadoConfig.class}`}>
+              {estadoConfig.label}
+            </span>
+            {historia && (
+              <button
+                onClick={() => setConsultaDrawerOpen(true)}
+                className="btn-primary text-xs hidden sm:flex"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Nueva Consulta
+              </button>
+            )}
+          </div>
         </div>
       </header>
 
@@ -118,52 +141,52 @@ export default function PacientePerfilPage({ params }: { params: Promise<{ id: s
               <div className="flex items-start justify-between gap-4 flex-wrap">
                 <div>
                   <h1 className="font-serif text-2xl font-semibold text-foreground">
-                    {p.nombres} {p.apellidos}
+                    {paciente.nombres} {paciente.apellidos}
                   </h1>
                   <div className="flex items-center gap-3 mt-1.5 flex-wrap">
                     <span className="text-sm text-muted-foreground">{edad} años</span>
                     <span className="w-1 h-1 rounded-full bg-border" />
-                    <span className="text-sm text-muted-foreground">DNI: <span className="font-mono font-medium text-foreground">{p.dni}</span></span>
+                    <span className="text-sm text-muted-foreground">
+                      DNI: <span className="font-mono font-medium text-foreground">{paciente.dni}</span>
+                    </span>
                     <span className="w-1 h-1 rounded-full bg-border" />
                     <span className="flex items-center gap-1 text-sm text-muted-foreground">
                       <BadgeCheck className="w-3.5 h-3.5 text-primary" />
-                      {p.numero_historia}
+                      {paciente.numero_historia}
                     </span>
                   </div>
                   <div className="flex items-center gap-4 mt-2 flex-wrap">
-                    <a href={`tel:${p.telefono}`} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-primary transition-colors">
-                      <Phone className="w-3.5 h-3.5" />{p.telefono}
+                    <a href={`tel:${paciente.telefono}`} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-primary transition-colors">
+                      <Phone className="w-3.5 h-3.5" />{paciente.telefono}
                     </a>
-                    {p.email && (
-                      <a href={`mailto:${p.email}`} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-primary transition-colors">
-                        <Mail className="w-3.5 h-3.5" />{p.email}
+                    {paciente.email && (
+                      <a href={`mailto:${paciente.email}`} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-primary transition-colors">
+                        <Mail className="w-3.5 h-3.5" />{paciente.email}
                       </a>
                     )}
-                    {p.distrito && (
+                    {paciente.distrito && (
                       <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                        <MapPin className="w-3.5 h-3.5" />{p.distrito}, {p.ciudad}
+                        <MapPin className="w-3.5 h-3.5" />{paciente.distrito}, {paciente.ciudad}
                       </span>
                     )}
                   </div>
                 </div>
 
-                {/* Stats rápidos */}
-                <div className="flex items-center gap-4">
-                  <div className="text-center px-4 py-2 bg-muted/60 rounded-xl border border-border">
-                    <p className="font-serif text-xl font-semibold text-foreground">{p.sesiones}</p>
-                    <p className="text-xs text-muted-foreground font-medium">Sesiones</p>
-                  </div>
-                  <div className="text-center px-4 py-2 bg-primary/8 rounded-xl border border-primary/15">
-                    <p className="font-serif text-xl font-semibold text-primary">8</p>
-                    <p className="text-xs text-primary/70 font-medium">Fotos</p>
-                  </div>
-                </div>
+                {/* Botón móvil */}
+                {historia && (
+                  <button
+                    onClick={() => setConsultaDrawerOpen(true)}
+                    className="btn-primary text-xs sm:hidden"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Nueva Consulta
+                  </button>
+                )}
               </div>
             </div>
           </div>
 
           {/* Tabs */}
-          <div className="border-t border-border px-6 flex gap-1 overflow-x-auto">
+          <div className="border-t border-border px-4 md:px-6 flex gap-1 overflow-x-auto">
             {TABS.map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
@@ -171,7 +194,7 @@ export default function PacientePerfilPage({ params }: { params: Promise<{ id: s
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center gap-2 px-4 py-3.5 text-sm font-medium border-b-2 transition-all whitespace-nowrap ${
+                  className={`flex items-center gap-2 px-3 md:px-4 py-3.5 text-sm font-medium border-b-2 transition-all whitespace-nowrap ${
                     isActive
                       ? "border-primary text-primary"
                       : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
@@ -188,46 +211,57 @@ export default function PacientePerfilPage({ params }: { params: Promise<{ id: s
         {/* Contenido del tab */}
         <div className="fade-up stagger-1">
 
-          {/* TAB: INFORMACIÓN */}
-          {activeTab === "info" && (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="card-premium p-6">
-                <p className="label-elegant mb-4">Datos Personales</p>
-                <InfoRow label="Nombres completos" value={`${p.nombres} ${p.apellidos}`} icon={User} />
-                <InfoRow label="DNI" value={p.dni} />
-                <InfoRow label="Fecha de nacimiento" value={`${new Date(p.fecha_nacimiento).toLocaleDateString("es-PE")} (${edad} años)`} />
-                <InfoRow label="Sexo" value={p.sexo === "F" ? "Femenino" : p.sexo === "M" ? "Masculino" : "Otro"} />
-                <InfoRow label="Ocupación" value={p.ocupacion} />
-              </div>
-              <div className="card-premium p-6">
-                <p className="label-elegant mb-4">Contacto & Ubicación</p>
-                <InfoRow label="Teléfono" value={p.telefono} icon={Phone} />
-                <InfoRow label="Teléfono Alt." value={p.telefono_alt} icon={Phone} />
-                <InfoRow label="Email" value={p.email} icon={Mail} />
-                <InfoRow label="Dirección" value={p.direccion} icon={MapPin} />
-                <InfoRow label="Distrito" value={`${p.distrito}, ${p.ciudad}`} />
-              </div>
-              <div className="card-premium p-6">
-                <p className="label-elegant mb-4">Antecedentes Médicos</p>
-                <InfoRow label="Grupo sanguíneo" value={p.grupo_sanguineo} icon={Stethoscope} />
-                <InfoRow label="Alergias" value={p.alergias.join(", ") || "Ninguna"} />
-                <InfoRow label="Antecedentes" value={p.antecedentes_medicos} />
-                <InfoRow label="Medicamentos" value={p.medicamentos_actuales} />
-              </div>
-            </div>
-          )}
-
           {/* TAB: FOTOS */}
           {activeTab === "fotos" && (
-            <FotosTimeline pacienteId={id} pacienteNombre={`${p.nombres} ${p.apellidos}`} />
+            <FotosTimeline
+              pacienteId={id}
+              pacienteNombre={`${paciente.nombres} ${paciente.apellidos}`}
+            />
           )}
 
           {/* TAB: HISTORIA CLÍNICA */}
           {activeTab === "historia" && (
             <HistoriaClinicaTab
               pacienteId={id}
-              pacienteNombre={`${p.nombres} ${p.apellidos}`}
+              pacienteNombre={`${paciente.nombres} ${paciente.apellidos}`}
             />
+          )}
+
+          {/* TAB: INFORMACIÓN */}
+          {activeTab === "info" && (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="card-premium p-6">
+                <p className="label-elegant mb-4">Datos Personales</p>
+                <InfoRow label="Nombres completos" value={`${paciente.nombres} ${paciente.apellidos}`} icon={User} />
+                <InfoRow label="DNI" value={paciente.dni} />
+                <InfoRow
+                  label="Fecha de nacimiento"
+                  value={`${new Date(paciente.fecha_nacimiento).toLocaleDateString("es-PE")} (${edad} años)`}
+                />
+                <InfoRow
+                  label="Sexo"
+                  value={paciente.sexo === "F" ? "Femenino" : paciente.sexo === "M" ? "Masculino" : paciente.sexo ? "Otro" : undefined}
+                />
+                <InfoRow label="Ocupación" value={paciente.ocupacion} />
+              </div>
+              <div className="card-premium p-6">
+                <p className="label-elegant mb-4">Contacto & Ubicación</p>
+                <InfoRow label="Teléfono" value={paciente.telefono} icon={Phone} />
+                <InfoRow label="Teléfono Alt." value={paciente.telefono_alt} icon={Phone} />
+                <InfoRow label="Email" value={paciente.email} icon={Mail} />
+                <InfoRow label="Dirección" value={paciente.direccion} icon={MapPin} />
+                {(paciente.distrito || paciente.ciudad) && (
+                  <InfoRow label="Distrito / Ciudad" value={[paciente.distrito, paciente.ciudad].filter(Boolean).join(", ")} />
+                )}
+              </div>
+              <div className="card-premium p-6">
+                <p className="label-elegant mb-4">Antecedentes Médicos</p>
+                <InfoRow label="Grupo sanguíneo" value={paciente.grupo_sanguineo} icon={Stethoscope} />
+                <InfoRow label="Alergias" value={paciente.alergias?.join(", ") || "Ninguna registrada"} />
+                <InfoRow label="Antecedentes" value={paciente.antecedentes_medicos} />
+                <InfoRow label="Medicamentos" value={paciente.medicamentos_actuales} />
+              </div>
+            </div>
           )}
 
           {/* TAB: CITAS */}
@@ -237,7 +271,7 @@ export default function PacientePerfilPage({ params }: { params: Promise<{ id: s
                 <CalendarDays className="w-7 h-7 text-primary/40" />
               </div>
               <h4 className="font-serif text-lg font-semibold text-foreground mb-2">Historial de Citas</h4>
-              <p className="text-sm text-muted-foreground">Se mostrará el historial de citas del paciente — Fase 3 del roadmap.</p>
+              <p className="text-sm text-muted-foreground">Próximamente — integración con el módulo de Agenda.</p>
             </div>
           )}
         </div>
