@@ -11,7 +11,6 @@ import {
 import { useFotos, useDeleteFoto, agruparPorMes, type FotoConUrl } from "@/lib/hooks/useFotos";
 import { SubirFotoDrawer } from "./SubirFotoDrawer";
 import { ComparadorSlider } from "./ComparadorSlider";
-import { CinematicReveal } from "./CinematicReveal";
 
 interface Props {
   pacienteId: string;
@@ -369,16 +368,9 @@ export function FotosTimeline({ pacienteId, pacienteNombre }: Props) {
 
   if (error) {
     return (
-      <div className="space-y-8">
-        <div className="card-premium p-6">
-          <div className="flex items-center gap-3 mb-6 pb-4 border-b border-border">
-            <div className="w-2 h-2 rounded-full bg-amber-400" />
-            <p className="text-sm text-muted-foreground">
-              Sin conexión a la base de datos — mostrando demostración del módulo fotográfico
-            </p>
-          </div>
-          <CinematicReveal tratamiento="Hilos Delta Lifting® · Resultado de Ejemplo" />
-        </div>
+      <div className="card-premium p-10 text-center">
+        <ImageOff className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
+        <p className="text-sm text-muted-foreground">Error al cargar fotografías. Verifica tu conexión.</p>
       </div>
     );
   }
@@ -430,36 +422,22 @@ export function FotosTimeline({ pacienteId, pacienteNombre }: Props) {
         </button>
       </div>
 
-      {/* Estado vacío — muestra demo cinematográfico */}
+      {/* Estado vacío */}
       {fotos.length === 0 && (
-        <div className="space-y-4">
-          {/* Demo reveal */}
-          <div className="card-premium p-6">
-            <div className="flex items-center gap-3 mb-6 pb-4 border-b border-border">
-              <div className="w-2 h-2 rounded-full bg-primary/60 animate-pulse" />
-              <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">
-                Vista previa del módulo — sube fotos reales del paciente para comenzar
-              </p>
-            </div>
-            <CinematicReveal tratamiento="Hilos Delta Lifting® · Demostración de Resultados" />
+        <div className="card-premium p-12 text-center">
+          <div className="w-14 h-14 rounded-full bg-primary/8 border border-primary/15 flex items-center justify-center mx-auto mb-4">
+            <Camera className="w-7 h-7 text-primary/40" />
           </div>
-
-          {/* CTA subir primera foto */}
-          <div className="card-premium p-8 text-center">
-            <div className="w-14 h-14 rounded-full bg-primary/8 border border-primary/15 flex items-center justify-center mx-auto mb-4">
-              <Camera className="w-7 h-7 text-primary/40" />
-            </div>
-            <h4 className="font-serif text-lg font-semibold text-foreground mb-2">
-              Registra las fotos de este paciente
-            </h4>
-            <p className="text-sm text-muted-foreground max-w-sm mx-auto mb-5">
-              Sube fotografías del estado inicial para construir el historial visual con comparación Antes & Después.
-            </p>
-            <button onClick={() => setDrawerOpen(true)} className="btn-primary">
-              <Upload className="w-4 h-4" />
-              Subir Primera Fotografía
-            </button>
-          </div>
+          <h4 className="font-serif text-lg font-semibold text-foreground mb-2">
+            Sin fotografías registradas
+          </h4>
+          <p className="text-sm text-muted-foreground max-w-sm mx-auto mb-5">
+            Sube fotografías del estado inicial para construir el historial visual con comparación Antes & Después.
+          </p>
+          <button onClick={() => setDrawerOpen(true)} className="btn-primary">
+            <Upload className="w-4 h-4" />
+            Subir Primera Fotografía
+          </button>
         </div>
       )}
 
