@@ -17,7 +17,7 @@ const NAV_LINKS = [
   { name: "Panel",          href: "/",               icon: LayoutDashboard, roles: ["admin", "doctor", "recepcion"] as UserRole[] },
   { name: "Pacientes",      href: "/pacientes",      icon: Users,           roles: ["admin", "doctor", "recepcion"] as UserRole[] },
   { name: "Renovaciones",   href: "/renovaciones",   icon: Bell,            roles: ["admin", "doctor", "recepcion"] as UserRole[] },
-  { name: "Procedimientos", href: "/procedimientos", icon: Syringe,             roles: ["admin", "doctor"] as UserRole[] },
+  { name: "Procedimientos", href: "/procedimientos", icon: Syringe,             roles: ["admin", "doctor", "recepcion"] as UserRole[] },
   { name: "Plantillas WA",  href: "/plantillas",     icon: MessageSquareText,   roles: ["admin", "doctor"] as UserRole[] },
   { name: "Config",         href: "/configuracion",  icon: Settings,            roles: ["admin"] as UserRole[] },
 ];
