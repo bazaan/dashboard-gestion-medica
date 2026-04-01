@@ -221,7 +221,7 @@ export function BoolCheckboxRow({
 // ─────────────────────────────────────────────────────────────────────────────
 // Main shared form component
 // ─────────────────────────────────────────────────────────────────────────────
-import { Activity, ClipboardList, HeartPulse, FlaskConical, Pill, Users } from "lucide-react";
+import { Activity, HeartPulse, FlaskConical, Pill, Users } from "lucide-react";
 
 export function HistoriaFormFields({
   form, setForm,
@@ -304,15 +304,6 @@ export function HistoriaFormFields({
               <input type="text" value={form[k]} onChange={set(k)} className={INPUT_CLS} />
             </div>
           ))}
-        </div>
-      </CollapsibleSection>
-
-      {/* ── Anamnesis ── */}
-      <CollapsibleSection title="Anamnesis" icon={ClipboardList}>
-        <div>
-          <label className={LABEL_CLS}>Tiempo de enfermedad</label>
-          <textarea rows={3} value={form.tiempo_enfermedad} onChange={set("tiempo_enfermedad")}
-            placeholder="Describir el tiempo y evolución de la enfermedad actual…" className={INPUT_CLS} />
         </div>
       </CollapsibleSection>
 
