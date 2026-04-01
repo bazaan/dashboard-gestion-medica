@@ -20,3 +20,16 @@ CREATE POLICY "proc_consulta_delete" ON procedimientos_consulta
 DROP POLICY IF EXISTS "historias_update" ON historias_clinicas;
 CREATE POLICY "historias_update" ON historias_clinicas
   FOR UPDATE USING (auth.uid() IS NOT NULL);
+
+-- fotos_antes_despues: allow any authenticated user to delete their own photos
+DROP POLICY IF EXISTS "fotos_delete" ON fotos_antes_despues;
+CREATE POLICY "fotos_delete" ON fotos_antes_despues
+  FOR DELETE USING (auth.uid() IS NOT NULL);
+
+-- evoluciones_clinicas update: allow recepcion to update consultations they created
+DROP POLICY IF EXISTS "evoluciones_update" ON evoluciones_clinicas;
+CREATE POLICY "evoluciones_update" ON evoluciones_clinicas
+  FOR UPDATE USING (
+    is_locked = FALSE
+    AND (get_my_role() IN ('admin', 'recepcion') OR doctor_id = auth.uid())
+  );
