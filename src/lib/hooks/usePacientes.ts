@@ -52,6 +52,49 @@ export function usePaciente(id: string) {
   });
 }
 
+// ── Editar datos del paciente ─────────────────────────────────
+export function useEditarPaciente() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Partial<Paciente> }) => {
+      const supabase = createClient();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error } = await (supabase as any)
+        .from("pacientes")
+        .update(data)
+        .eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: (_, { id }) => {
+      queryClient.invalidateQueries({ queryKey: ["pacientes"] });
+      queryClient.invalidateQueries({ queryKey: ["paciente", id] });
+      toast.success("Paciente actualizado correctamente");
+    },
+    onError: (err: Error) => toast.error("Error: " + err.message),
+  });
+}
+
+// ── Eliminar paciente ─────────────────────────────────────────
+export function useEliminarPaciente() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const supabase = createClient();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error } = await (supabase as any)
+        .from("pacientes")
+        .delete()
+        .eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["pacientes"] });
+      toast.success("Paciente eliminado");
+    },
+    onError: (err: Error) => toast.error("Error: " + err.message),
+  });
+}
+
 // ── Actualizar estado del paciente ────────────────────────────
 export function useActualizarEstadoPaciente() {
   const queryClient = useQueryClient();

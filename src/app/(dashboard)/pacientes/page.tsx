@@ -2,14 +2,15 @@
 
 import {
   Search, Plus, SlidersHorizontal, MoreHorizontal, Users,
-  ChevronLeft, ChevronRight, ArrowUpDown, Eye, ClipboardList,
-  Phone, Loader2,
+  ChevronLeft, ChevronRight, ArrowUpDown, Eye, Pencil, Trash2,
+  Phone, Loader2, UserCheck, UserX, Star,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { NuevoPacienteDrawer } from "@/components/pacientes/NuevoPacienteDrawer";
-import { usePacientes, getInitials } from "@/lib/hooks/usePacientes";
+import { usePacientes, useEliminarPaciente, useActualizarEstadoPaciente, getInitials } from "@/lib/hooks/usePacientes";
+import type { Paciente, PacienteEstado } from "@/types/database.types";
 
 const ESTADO_BADGE: Record<string, string> = {
   vip:      "bg-primary/10 text-primary border-primary/20 font-semibold",
@@ -22,24 +23,195 @@ const ESTADO_LABEL: Record<string, string> = {
 
 const PAGE_SIZE = 20;
 
+// ── Menú contextual de tres puntos ───────────────────────────
+function AccionesMenu({
+  paciente,
+  onEdit,
+  onDelete,
+  onEstado,
+}: {
+  paciente: Paciente;
+  onEdit: () => void;
+  onDelete: () => void;
+  onEstado: (estado: PacienteEstado) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
+        className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-all"
+      >
+        <MoreHorizontal className="w-4 h-4" />
+      </button>
+
+      {open && (
+        <div
+          className="absolute right-0 top-8 z-50 w-48 bg-background border border-border rounded-xl shadow-lg py-1 animate-in fade-in slide-in-from-top-1 duration-150"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={() => { onEdit(); setOpen(false); }}
+            className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-foreground hover:bg-muted transition-colors text-left"
+          >
+            <Pencil className="w-3.5 h-3.5 text-muted-foreground" />
+            Editar datos
+          </button>
+
+          <div className="my-1 border-t border-border/60" />
+
+          {paciente.estado !== "activo" && (
+            <button
+              onClick={() => { onEstado("activo"); setOpen(false); }}
+              className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-foreground hover:bg-muted transition-colors text-left"
+            >
+              <UserCheck className="w-3.5 h-3.5 text-emerald-500" />
+              Marcar Activo
+            </button>
+          )}
+          {paciente.estado !== "vip" && (
+            <button
+              onClick={() => { onEstado("vip"); setOpen(false); }}
+              className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-foreground hover:bg-muted transition-colors text-left"
+            >
+              <Star className="w-3.5 h-3.5 text-primary" />
+              Marcar VIP
+            </button>
+          )}
+          {paciente.estado !== "inactivo" && (
+            <button
+              onClick={() => { onEstado("inactivo"); setOpen(false); }}
+              className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-foreground hover:bg-muted transition-colors text-left"
+            >
+              <UserX className="w-3.5 h-3.5 text-slate-400" />
+              Marcar Inactivo
+            </button>
+          )}
+
+          <div className="my-1 border-t border-border/60" />
+
+          <button
+            onClick={() => { onDelete(); setOpen(false); }}
+            className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors text-left"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            Eliminar paciente
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Modal de confirmación de eliminación ──────────────────────
+function ConfirmarEliminar({
+  paciente,
+  onConfirm,
+  onCancel,
+  loading,
+}: {
+  paciente: Paciente;
+  onConfirm: () => void;
+  onCancel: () => void;
+  loading: boolean;
+}) {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onCancel} />
+      <div className="relative bg-background rounded-2xl shadow-2xl border border-border w-full max-w-md p-6 animate-in fade-in zoom-in-95 duration-200">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+            <Trash2 className="w-5 h-5 text-red-600" />
+          </div>
+          <div>
+            <h3 className="font-semibold text-foreground">Eliminar paciente</h3>
+            <p className="text-sm text-muted-foreground">Esta acción no se puede deshacer</p>
+          </div>
+        </div>
+        <p className="text-sm text-foreground mb-1">
+          ¿Estás seguro de eliminar a <strong>{paciente.nombres} {paciente.apellidos}</strong>?
+        </p>
+        <p className="text-xs text-muted-foreground mb-6">
+          Se eliminarán todos sus datos, historia clínica, consultas y fotografías.
+        </p>
+        <div className="flex gap-3">
+          <button
+            onClick={onCancel}
+            className="flex-1 py-2.5 rounded-lg border border-border text-sm font-medium hover:bg-muted transition-colors"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={loading}
+            className="flex-1 py-2.5 rounded-lg bg-red-600 text-white text-sm font-semibold hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+            Eliminar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Página principal ─────────────────────────────────────────
 export default function PacientesPage() {
   const router = useRouter();
-  const [search, setSearch]       = useState("");
+  const [search, setSearch]         = useState("");
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [page, setPage]           = useState(1);
+  const [editPaciente, setEditPaciente] = useState<Paciente | undefined>(undefined);
+  const [deletePaciente, setDeletePaciente] = useState<Paciente | null>(null);
+  const [page, setPage]             = useState(1);
 
   const { data: pacientes = [], isLoading, error } = usePacientes(search);
+  const { mutate: eliminar, isPending: eliminando } = useEliminarPaciente();
+  const { mutate: cambiarEstado } = useActualizarEstadoPaciente();
 
   const paginated = pacientes.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   const totalPages = Math.max(1, Math.ceil(pacientes.length / PAGE_SIZE));
+
+  function handleEdit(p: Paciente) {
+    setEditPaciente(p);
+    setDrawerOpen(true);
+  }
+
+  function handleCloseDrawer() {
+    setDrawerOpen(false);
+    setEditPaciente(undefined);
+  }
 
   return (
     <div className="min-h-full bg-background">
       <NuevoPacienteDrawer
         open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        onSuccess={() => setDrawerOpen(false)}
+        onClose={handleCloseDrawer}
+        onSuccess={handleCloseDrawer}
+        paciente={editPaciente}
       />
+
+      {deletePaciente && (
+        <ConfirmarEliminar
+          paciente={deletePaciente}
+          loading={eliminando}
+          onCancel={() => setDeletePaciente(null)}
+          onConfirm={() =>
+            eliminar(deletePaciente.id, {
+              onSuccess: () => setDeletePaciente(null),
+            })
+          }
+        />
+      )}
 
       {/* Header */}
       <header className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b border-border">
@@ -91,7 +263,6 @@ export default function PacientesPage() {
             </button>
           </div>
 
-          {/* Estado de carga */}
           {isLoading && (
             <div className="flex items-center justify-center py-16 gap-2 text-muted-foreground">
               <Loader2 className="w-5 h-5 animate-spin text-primary" />
@@ -124,31 +295,37 @@ export default function PacientesPage() {
               {/* MOBILE: lista de cards */}
               <div className="md:hidden divide-y divide-border/60">
                 {paginated.map((p) => (
-                  <div
-                    key={p.id}
-                    onClick={() => router.push(`/pacientes/${p.id}`)}
-                    className="px-4 py-4 flex items-center gap-3 hover:bg-muted/25 active:bg-muted/40 transition-colors cursor-pointer"
-                  >
-                    <div className="w-10 h-10 rounded-full bg-primary/10 border border-primary/15 flex items-center justify-center text-primary font-bold text-sm shrink-0">
-                      {getInitials(p.nombres, p.apellidos)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-0.5">
-                        <p className="font-semibold text-sm text-foreground truncate">
-                          {p.nombres} {p.apellidos}
-                        </p>
-                        <span className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border ${ESTADO_BADGE[p.estado]}`}>
-                          {ESTADO_LABEL[p.estado]}
-                        </span>
+                  <div key={p.id} className="px-4 py-4 flex items-center gap-3 hover:bg-muted/25 active:bg-muted/40 transition-colors">
+                    <div
+                      onClick={() => router.push(`/pacientes/${p.id}`)}
+                      className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer"
+                    >
+                      <div className="w-10 h-10 rounded-full bg-primary/10 border border-primary/15 flex items-center justify-center text-primary font-bold text-sm shrink-0">
+                        {getInitials(p.nombres, p.apellidos)}
                       </div>
-                      <div className="flex items-center gap-3 mt-0.5">
-                        <span className="text-[10px] text-muted-foreground font-mono">{p.dni}</span>
-                        <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground">
-                          <Phone className="w-2.5 h-2.5" />{p.telefono}
-                        </span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <p className="font-semibold text-sm text-foreground truncate">
+                            {p.nombres} {p.apellidos}
+                          </p>
+                          <span className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border ${ESTADO_BADGE[p.estado]}`}>
+                            {ESTADO_LABEL[p.estado]}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3 mt-0.5">
+                          <span className="text-[10px] text-muted-foreground font-mono">{p.dni}</span>
+                          <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground">
+                            <Phone className="w-2.5 h-2.5" />{p.telefono}
+                          </span>
+                        </div>
                       </div>
                     </div>
-                    <ChevronRight className="w-4 h-4 text-muted-foreground/40 shrink-0" />
+                    <AccionesMenu
+                      paciente={p}
+                      onEdit={() => handleEdit(p)}
+                      onDelete={() => setDeletePaciente(p)}
+                      onEstado={(estado) => cambiarEstado({ id: p.id, estado })}
+                    />
                   </div>
                 ))}
               </div>
@@ -212,21 +389,23 @@ export default function PacientesPage() {
                               href={`/pacientes/${p.id}`}
                               onClick={(e) => e.stopPropagation()}
                               className="p-1.5 rounded-lg hover:bg-primary/10 text-muted-foreground hover:text-primary transition-all"
+                              title="Ver perfil"
                             >
                               <Eye className="w-4 h-4" />
                             </Link>
                             <button
-                              onClick={(e) => e.stopPropagation()}
+                              onClick={(e) => { e.stopPropagation(); handleEdit(p); }}
                               className="p-1.5 rounded-lg hover:bg-primary/10 text-muted-foreground hover:text-primary transition-all"
+                              title="Editar"
                             >
-                              <ClipboardList className="w-4 h-4" />
+                              <Pencil className="w-4 h-4" />
                             </button>
-                            <button
-                              onClick={(e) => e.stopPropagation()}
-                              className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-all"
-                            >
-                              <MoreHorizontal className="w-4 h-4" />
-                            </button>
+                            <AccionesMenu
+                              paciente={p}
+                              onEdit={() => handleEdit(p)}
+                              onDelete={() => setDeletePaciente(p)}
+                              onEstado={(estado) => cambiarEstado({ id: p.id, estado })}
+                            />
                           </div>
                         </td>
                       </tr>

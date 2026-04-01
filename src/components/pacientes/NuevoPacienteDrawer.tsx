@@ -4,15 +4,17 @@ import { useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQueryClient } from "@tanstack/react-query";
-import { X, User, Phone, MapPin, Stethoscope, ShieldCheck, Loader2, ChevronRight } from "lucide-react";
+import { X, User, Phone, MapPin, Stethoscope, ShieldCheck, Loader2, ChevronRight, Pencil } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { pacienteSchema, type PacienteFormData } from "@/lib/schemas/paciente.schema";
+import type { Paciente } from "@/types/database.types";
 
 interface Props {
   open: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  paciente?: Paciente; // si se pasa → modo edición
 }
 
 const SECCIONES = [
@@ -46,9 +48,10 @@ function Field({
   );
 }
 
-export function NuevoPacienteDrawer({ open, onClose, onSuccess }: Props) {
+export function NuevoPacienteDrawer({ open, onClose, onSuccess, paciente }: Props) {
   const overlayRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
+  const esEdicion = !!paciente;
 
   const {
     register,
@@ -59,6 +62,33 @@ export function NuevoPacienteDrawer({ open, onClose, onSuccess }: Props) {
     resolver: zodResolver(pacienteSchema),
     defaultValues: { ciudad: "Lima", consentimiento_datos: false },
   });
+
+  // Pre-llenar formulario en modo edición
+  useEffect(() => {
+    if (open && paciente) {
+      reset({
+        nombres:               paciente.nombres,
+        apellidos:             paciente.apellidos,
+        dni:                   paciente.dni,
+        fecha_nacimiento:      paciente.fecha_nacimiento,
+        sexo:                  (paciente.sexo as "F" | "M" | "otro") || undefined,
+        ocupacion:             paciente.ocupacion || "",
+        telefono:              paciente.telefono,
+        telefono_alt:          paciente.telefono_alt || "",
+        email:                 paciente.email || "",
+        direccion:             paciente.direccion || "",
+        distrito:              paciente.distrito || "",
+        ciudad:                paciente.ciudad || "Lima",
+        grupo_sanguineo:       paciente.grupo_sanguineo || "",
+        alergias_texto:        (paciente.alergias ?? []).join(", "),
+        antecedentes_medicos:  paciente.antecedentes_medicos || "",
+        medicamentos_actuales: paciente.medicamentos_actuales || "",
+        consentimiento_datos:  true, // ya fue aceptado al crear
+      });
+    } else if (open && !paciente) {
+      reset({ ciudad: "Lima", consentimiento_datos: false });
+    }
+  }, [open, paciente, reset]);
 
   // Cerrar con Escape
   useEffect(() => {
@@ -75,50 +105,69 @@ export function NuevoPacienteDrawer({ open, onClose, onSuccess }: Props) {
 
   async function onSubmit(data: PacienteFormData) {
     const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-
-    if (!user) { toast.error("Sin sesión activa"); return; }
-
     const alergias = data.alergias_texto
       ? data.alergias_texto.split(",").map((a) => a.trim()).filter(Boolean)
       : [];
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error } = await (supabase.from("pacientes") as any).insert({
-      numero_historia: generateNumeroHistoria(),
-      nombres: data.nombres,
-      apellidos: data.apellidos,
-      dni: data.dni,
-      email: data.email || null,
-      telefono: data.telefono,
-      telefono_alt: data.telefono_alt || null,
-      fecha_nacimiento: data.fecha_nacimiento,
-      sexo: data.sexo || null,
-      direccion: data.direccion || null,
-      distrito: data.distrito || null,
-      ciudad: data.ciudad || "Lima",
-      ocupacion: data.ocupacion || null,
-      grupo_sanguineo: data.grupo_sanguineo || null,
+    const payload = {
+      nombres:               data.nombres,
+      apellidos:             data.apellidos,
+      dni:                   data.dni,
+      email:                 data.email || null,
+      telefono:              data.telefono,
+      telefono_alt:          data.telefono_alt || null,
+      fecha_nacimiento:      data.fecha_nacimiento,
+      sexo:                  data.sexo || null,
+      direccion:             data.direccion || null,
+      distrito:              data.distrito || null,
+      ciudad:                data.ciudad || "Lima",
+      ocupacion:             data.ocupacion || null,
+      grupo_sanguineo:       data.grupo_sanguineo || null,
       alergias,
-      antecedentes_medicos: data.antecedentes_medicos || null,
+      antecedentes_medicos:  data.antecedentes_medicos || null,
       medicamentos_actuales: data.medicamentos_actuales || null,
-      consentimiento_datos: data.consentimiento_datos,
-      consentimiento_fecha: new Date().toISOString(),
-      estado: "activo",
-      creado_por: user.id,
-    });
+    };
 
-    if (error) {
-      if (error.message.includes("unique") || error.message.includes("dni")) {
-        toast.error("Ya existe un paciente con ese DNI");
-      } else {
-        toast.error("Error al registrar paciente: " + error.message);
+    if (esEdicion && paciente) {
+      // ── EDITAR ──
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error } = await (supabase.from("pacientes") as any)
+        .update(payload)
+        .eq("id", paciente.id);
+
+      if (error) { toast.error("Error al actualizar: " + error.message); return; }
+
+      toast.success(`Paciente ${data.nombres} ${data.apellidos} actualizado`);
+      queryClient.invalidateQueries({ queryKey: ["pacientes"] });
+      queryClient.invalidateQueries({ queryKey: ["paciente", paciente.id] });
+    } else {
+      // ── CREAR ──
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { toast.error("Sin sesión activa"); return; }
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error } = await (supabase.from("pacientes") as any).insert({
+        ...payload,
+        numero_historia:    generateNumeroHistoria(),
+        consentimiento_datos: data.consentimiento_datos,
+        consentimiento_fecha: new Date().toISOString(),
+        estado:             "activo",
+        creado_por:         user.id,
+      });
+
+      if (error) {
+        if (error.message.includes("unique") || error.message.includes("dni")) {
+          toast.error("Ya existe un paciente con ese DNI");
+        } else {
+          toast.error("Error al registrar paciente: " + error.message);
+        }
+        return;
       }
-      return;
+
+      toast.success(`Paciente ${data.nombres} ${data.apellidos} registrado correctamente`);
+      queryClient.invalidateQueries({ queryKey: ["pacientes"] });
     }
 
-    toast.success(`Paciente ${data.nombres} ${data.apellidos} registrado correctamente`);
-    queryClient.invalidateQueries({ queryKey: ["pacientes"] });
     reset();
     onSuccess();
     onClose();
@@ -142,9 +191,12 @@ export function NuevoPacienteDrawer({ open, onClose, onSuccess }: Props) {
         <div className="flex items-center justify-between px-8 py-6 border-b border-border bg-background shrink-0">
           <div>
             <p className="label-elegant mb-1">Directorio Médico</p>
-            <h2 className="font-serif text-xl font-semibold text-foreground">
-              Nuevo Paciente
+            <h2 className="font-serif text-xl font-semibold text-foreground flex items-center gap-2">
+              {esEdicion ? <><Pencil className="w-4 h-4 text-primary" /> Editar Paciente</> : "Nuevo Paciente"}
             </h2>
+            {esEdicion && (
+              <p className="text-sm text-muted-foreground mt-0.5">{paciente.nombres} {paciente.apellidos}</p>
+            )}
           </div>
           <button
             onClick={onClose}
@@ -156,7 +208,7 @@ export function NuevoPacienteDrawer({ open, onClose, onSuccess }: Props) {
 
         {/* Índice de secciones */}
         <div className="flex items-center gap-1 px-8 py-3 border-b border-border bg-muted/30 overflow-x-auto shrink-0">
-          {SECCIONES.map((s, i) => {
+          {(esEdicion ? SECCIONES.slice(0, 4) : SECCIONES).map((s, i, arr) => {
             const Icon = s.icon;
             return (
               <div key={s.id} className="flex items-center gap-1 shrink-0">
@@ -164,7 +216,7 @@ export function NuevoPacienteDrawer({ open, onClose, onSuccess }: Props) {
                   <Icon className="w-3.5 h-3.5" />
                   {s.label}
                 </a>
-                {i < SECCIONES.length - 1 && <ChevronRight className="w-3 h-3 text-border shrink-0" />}
+                {i < arr.length - 1 && <ChevronRight className="w-3 h-3 text-border shrink-0" />}
               </div>
             );
           })}
@@ -295,30 +347,32 @@ export function NuevoPacienteDrawer({ open, onClose, onSuccess }: Props) {
               </div>
             </section>
 
-            {/* ── CONSENTIMIENTO ── */}
-            <section id="seccion-consentimiento">
-              <div className="flex items-center gap-2 mb-4">
-                <ShieldCheck className="w-4 h-4 text-primary" />
-                <h3 className="font-semibold text-sm text-foreground">Consentimiento de Datos</h3>
-                <div className="flex-1 h-px bg-border" />
-              </div>
-              <div className="bg-primary/5 border border-primary/15 rounded-xl p-4">
-                <label className="flex items-start gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    {...register("consentimiento_datos")}
-                    className="mt-0.5 w-4 h-4 rounded accent-primary shrink-0"
-                  />
-                  <span className="text-sm text-foreground leading-relaxed">
-                    El paciente autoriza el tratamiento de sus datos personales y médicos de conformidad con la{" "}
-                    <strong>Ley N° 29733</strong> — Ley de Protección de Datos Personales del Perú. Los datos serán utilizados exclusivamente para la prestación de servicios médicos y no serán compartidos con terceros sin consentimiento explícito.
-                  </span>
-                </label>
-                {errors.consentimiento_datos && (
-                  <p className="text-xs text-red-500 mt-2 ml-7">{errors.consentimiento_datos.message}</p>
-                )}
-              </div>
-            </section>
+            {/* ── CONSENTIMIENTO — solo en creación ── */}
+            {!esEdicion && (
+              <section id="seccion-consentimiento">
+                <div className="flex items-center gap-2 mb-4">
+                  <ShieldCheck className="w-4 h-4 text-primary" />
+                  <h3 className="font-semibold text-sm text-foreground">Consentimiento de Datos</h3>
+                  <div className="flex-1 h-px bg-border" />
+                </div>
+                <div className="bg-primary/5 border border-primary/15 rounded-xl p-4">
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      {...register("consentimiento_datos")}
+                      className="mt-0.5 w-4 h-4 rounded accent-primary shrink-0"
+                    />
+                    <span className="text-sm text-foreground leading-relaxed">
+                      El paciente autoriza el tratamiento de sus datos personales y médicos de conformidad con la{" "}
+                      <strong>Ley N° 29733</strong> — Ley de Protección de Datos Personales del Perú. Los datos serán utilizados exclusivamente para la prestación de servicios médicos y no serán compartidos con terceros sin consentimiento explícito.
+                    </span>
+                  </label>
+                  {errors.consentimiento_datos && (
+                    <p className="text-xs text-red-500 mt-2 ml-7">{errors.consentimiento_datos.message}</p>
+                  )}
+                </div>
+              </section>
+            )}
 
           </div>
         </form>
@@ -340,7 +394,9 @@ export function NuevoPacienteDrawer({ open, onClose, onSuccess }: Props) {
             className="btn-primary min-w-40"
           >
             {isSubmitting ? (
-              <><Loader2 className="w-4 h-4 animate-spin" />Registrando...</>
+              <><Loader2 className="w-4 h-4 animate-spin" />{esEdicion ? "Guardando..." : "Registrando..."}</>
+            ) : esEdicion ? (
+              <><Pencil className="w-4 h-4" />Guardar Cambios</>
             ) : (
               <><ShieldCheck className="w-4 h-4" />Registrar Paciente</>
             )}
