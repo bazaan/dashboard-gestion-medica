@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useDropzone } from "react-dropzone";
 import { format } from "date-fns";
@@ -11,11 +11,12 @@ import {
   Stethoscope, Loader2, Lock, File as FileIcon,
   Edit3, Eye, Download, Syringe, ClipboardList,
   Pill, MessageSquare, CalendarClock, CheckCheck, Calendar,
-  Pencil, Save, X,
+  Pencil, Save, X, Check, Clock,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
-import type { HistoriaClinica, EvolucionClinica } from "@/types/database.types";
+import type { HistoriaClinica, EvolucionClinica, Tratamiento } from "@/types/database.types";
+import { CATEGORIA_LABELS, type TratamientoCategoria } from "@/types/database.types";
 import {
   TIPO_PIEL_LABELS, FITZPATRICK_LABELS,
   HistoriaFormState, FORM_EMPTY, historiaToForm, formToDbPayload,
@@ -26,6 +27,7 @@ import {
 type EvolucionConProcs = EvolucionClinica & {
   procedimientos_consulta?: Array<{
     id: string;
+    tratamiento_id: string;
     tratamientos_catalogo: { nombre: string; categoria: string } | null;
   }>;
 };
@@ -59,7 +61,7 @@ function useEvoluciones(historiaId: string | null) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error } = await (supabase as any)
         .from("evoluciones_clinicas")
-        .select(`*, procedimientos_consulta(id, tratamientos_catalogo(nombre, categoria))`)
+        .select(`*, procedimientos_consulta(id, tratamiento_id, tratamientos_catalogo(nombre, categoria))`)
         .eq("historia_id", historiaId)
         .order("fecha_atencion", { ascending: false });
       if (error) throw error;
@@ -81,6 +83,59 @@ function useDocumentos(pacienteId: string) {
       return data ?? [];
     },
     retry: false,
+  });
+}
+
+function useTratamientosCatalogo() {
+  return useQuery<Tratamiento[]>({
+    queryKey: ["tratamientos_catalogo"],
+    queryFn: async () => {
+      const supabase = createClient();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase as any)
+        .from("tratamientos_catalogo")
+        .select("id, nombre, codigo, categoria, duracion_vigencia_meses, intervalo_recordatorio_dias, sesiones_por_ciclo, es_permanente")
+        .eq("is_active", true)
+        .order("categoria").order("nombre");
+      if (error) throw error;
+      return (data ?? []) as Tratamiento[];
+    },
+    staleTime: 30 * 60 * 1000,
+  });
+}
+
+function useActualizarEvolucion() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id, historiaId, payload, nuevaTratamientoIds,
+    }: {
+      id: string; historiaId: string;
+      payload: Record<string, unknown>; nuevaTratamientoIds: string[];
+    }) => {
+      const supabase = createClient();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error: updError } = await (supabase as any)
+        .from("evoluciones_clinicas").update(payload).eq("id", id);
+      if (updError) throw updError;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error: delError } = await (supabase as any)
+        .from("procedimientos_consulta").delete().eq("evolucion_id", id);
+      if (delError) throw delError;
+      if (nuevaTratamientoIds.length > 0) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { error: insError } = await (supabase as any)
+          .from("procedimientos_consulta")
+          .insert(nuevaTratamientoIds.map(tid => ({ evolucion_id: id, tratamiento_id: tid })));
+        if (insError) throw insError;
+      }
+      return historiaId;
+    },
+    onSuccess: (historiaId) => {
+      queryClient.invalidateQueries({ queryKey: ["evoluciones", historiaId] });
+      toast.success("Consulta actualizada");
+    },
+    onError: (e: Error) => toast.error("Error: " + e.message),
   });
 }
 
@@ -379,10 +434,286 @@ function HistoriaBaseCard({ historia }: { historia: HistoriaClinica }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Drawer de edición de consulta
+// ─────────────────────────────────────────────────────────────────────────────
+const INPUT_E = "w-full px-3.5 py-2.5 rounded-lg border border-border bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/25 focus:border-primary/40 transition-all placeholder:text-muted-foreground/50";
+const LABEL_E = "block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5";
+
+function EditarConsultaDrawer({
+  evolucion, historiaId, open, onClose,
+}: {
+  evolucion: EvolucionConProcs; historiaId: string; open: boolean; onClose: () => void;
+}) {
+  const { mutate, isPending } = useActualizarEvolucion();
+  const { data: tratamientos = [] } = useTratamientosCatalogo();
+
+  const currentTratIds = (evolucion.procedimientos_consulta ?? [])
+    .map(p => p.tratamiento_id)
+    .filter(Boolean) as string[];
+
+  const fechaIso = evolucion.fecha_atencion ? new Date(evolucion.fecha_atencion) : new Date();
+
+  const [selectedTrats, setSelectedTrats] = useState<string[]>([]);
+  const [catSearch, setCatSearch]         = useState("");
+  const [clinicaOpen, setClinicaOpen]     = useState(false);
+  const [fields, setFields] = useState({
+    fecha:                  "",
+    hora:                   "",
+    observaciones:          evolucion.observaciones          ?? "",
+    proxima_sesion:         evolucion.proxima_sesion_sugerida ? evolucion.proxima_sesion_sugerida.slice(0, 10) : "",
+    motivo_consulta:        evolucion.motivo_consulta        ?? "",
+    signos_sintomas:        evolucion.signos_sintomas         ?? "",
+    examen_fisico:          evolucion.examen_fisico           ?? "",
+    fur:                    evolucion.fur                     ?? "",
+    ram:                    evolucion.ram                     ?? "",
+    antecedentes:           evolucion.antecedentes            ?? "",
+    examenes_auxiliares:    evolucion.examenes_auxiliares     ?? "",
+    medicacion:             evolucion.medicacion              ?? "",
+    diagnostico:            evolucion.diagnostico             ?? "",
+    recomendaciones:        evolucion.recomendaciones         ?? "",
+  });
+
+  // Inicializar cuando abre
+  useEffect(() => {
+    if (!open) return;
+    setSelectedTrats(currentTratIds);
+    setCatSearch("");
+    setClinicaOpen(false);
+    setFields({
+      fecha:               fechaIso.toISOString().split("T")[0],
+      hora:                fechaIso.toTimeString().slice(0, 5),
+      observaciones:       evolucion.observaciones          ?? "",
+      proxima_sesion:      evolucion.proxima_sesion_sugerida ? evolucion.proxima_sesion_sugerida.slice(0, 10) : "",
+      motivo_consulta:     evolucion.motivo_consulta        ?? "",
+      signos_sintomas:     evolucion.signos_sintomas         ?? "",
+      examen_fisico:       evolucion.examen_fisico           ?? "",
+      fur:                 evolucion.fur                     ?? "",
+      ram:                 evolucion.ram                     ?? "",
+      antecedentes:        evolucion.antecedentes            ?? "",
+      examenes_auxiliares: evolucion.examenes_auxiliares     ?? "",
+      medicacion:          evolucion.medicacion              ?? "",
+      diagnostico:         evolucion.diagnostico             ?? "",
+      recomendaciones:     evolucion.recomendaciones         ?? "",
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  useEffect(() => {
+    document.body.style.overflow = open ? "hidden" : "";
+    return () => { document.body.style.overflow = ""; };
+  }, [open]);
+
+  const set = (k: keyof typeof fields) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+    setFields(p => ({ ...p, [k]: e.target.value }));
+
+  const toggle = (id: string) =>
+    setSelectedTrats(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id]);
+
+  const filtered = catSearch
+    ? tratamientos.filter(t => t.nombre.toLowerCase().includes(catSearch.toLowerCase()))
+    : tratamientos;
+  const porCategoria = filtered.reduce<Record<string, typeof filtered>>((acc, t) => {
+    if (!acc[t.categoria]) acc[t.categoria] = [];
+    acc[t.categoria].push(t);
+    return acc;
+  }, {});
+
+  function handleSave() {
+    const fechaHora = `${fields.fecha}T${fields.hora}:00`;
+    const procedimientoResumen = selectedTrats
+      .map(id => tratamientos.find(t => t.id === id)?.nombre)
+      .filter(Boolean).join(", ");
+
+    mutate({
+      id: evolucion.id,
+      historiaId,
+      nuevaTratamientoIds: selectedTrats,
+      payload: {
+        fecha_atencion:          fechaHora,
+        motivo_consulta:         fields.motivo_consulta     || evolucion.motivo_consulta,
+        signos_sintomas:         fields.signos_sintomas     || null,
+        examen_fisico:           fields.examen_fisico       || null,
+        fur:                     fields.fur                 || null,
+        ram:                     fields.ram                 || null,
+        antecedentes:            fields.antecedentes        || null,
+        examenes_auxiliares:     fields.examenes_auxiliares || null,
+        medicacion:              fields.medicacion          || null,
+        diagnostico:             fields.diagnostico         || null,
+        procedimiento:           procedimientoResumen       || evolucion.procedimiento,
+        observaciones:           fields.observaciones       || null,
+        recomendaciones:         fields.recomendaciones     || null,
+        proxima_sesion_sugerida: fields.proxima_sesion      || null,
+      },
+    }, { onSuccess: onClose });
+  }
+
+  if (!open) return null;
+
+  return (
+    <>
+      <div className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="fixed right-0 top-0 bottom-0 z-50 w-full max-w-xl bg-background shadow-2xl flex flex-col overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-background shrink-0">
+          <div>
+            <p className="label-elegant mb-0.5">Editar Consulta</p>
+            <p className="text-xs text-muted-foreground font-mono">
+              {format(fechaIso, "d 'de' MMMM yyyy", { locale: es })}
+            </p>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-muted text-muted-foreground transition-all">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+
+          {/* Fecha + Hora */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={LABEL_E}>Fecha</label>
+              <div className="relative">
+                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+                <input type="date" value={fields.fecha} onChange={set("fecha")} className={`${INPUT_E} pl-9`} />
+              </div>
+            </div>
+            <div>
+              <label className={LABEL_E}>Hora</label>
+              <div className="relative">
+                <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+                <input type="time" value={fields.hora} onChange={set("hora")} className={`${INPUT_E} pl-9`} />
+              </div>
+            </div>
+          </div>
+
+          {/* Procedimientos */}
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <Syringe className="w-3.5 h-3.5 text-primary" />
+              <label className={LABEL_E}>Procedimientos realizados</label>
+            </div>
+            {selectedTrats.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-2.5 p-3 bg-primary/5 rounded-xl border border-primary/15">
+                {selectedTrats.map(id => {
+                  const t = tratamientos.find(x => x.id === id);
+                  if (!t) return null;
+                  return (
+                    <span key={id} className="inline-flex items-center gap-1 px-2.5 py-1 bg-primary text-white rounded-full text-xs font-medium">
+                      {t.nombre}
+                      <button type="button" onClick={() => toggle(id)} className="hover:opacity-70">
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+            <input type="text" value={catSearch} onChange={e => setCatSearch(e.target.value)}
+              placeholder="Buscar procedimiento…" className={`${INPUT_E} mb-3`} />
+            <div className="border border-border rounded-xl overflow-hidden divide-y divide-border/60 max-h-56 overflow-y-auto">
+              {Object.entries(porCategoria).map(([cat, items]) => (
+                <div key={cat}>
+                  <p className="px-3.5 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-widest bg-muted/40 sticky top-0">
+                    {CATEGORIA_LABELS[cat as TratamientoCategoria] ?? cat}
+                  </p>
+                  {items.map(t => {
+                    const sel = selectedTrats.includes(t.id);
+                    return (
+                      <button key={t.id} type="button" onClick={() => toggle(t.id)}
+                        className={`w-full flex items-center gap-3 px-3.5 py-2.5 text-left text-sm transition-colors ${sel ? "bg-primary/8" : "hover:bg-muted/40"}`}
+                      >
+                        <div className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${sel ? "bg-primary border-primary" : "border-border"}`}>
+                          {sel && <Check className="w-2.5 h-2.5 text-white" />}
+                        </div>
+                        <span className={`flex-1 font-medium ${sel ? "text-primary" : "text-foreground"}`}>{t.nombre}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Observaciones */}
+          <div>
+            <label className={LABEL_E}>Notas / Observaciones</label>
+            <textarea value={fields.observaciones} onChange={set("observaciones")} rows={3}
+              className={`${INPUT_E} resize-none`}
+              placeholder="Resultado del procedimiento, incidencias, indicaciones post…" />
+          </div>
+
+          {/* Próxima sesión */}
+          <div>
+            <label className={LABEL_E}>Próxima sesión sugerida</label>
+            <div className="relative">
+              <CalendarClock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+              <input type="date" value={fields.proxima_sesion} onChange={set("proxima_sesion")} className={`${INPUT_E} pl-9`} />
+            </div>
+          </div>
+
+          {/* Datos clínicos adicionales */}
+          <div className="border border-border rounded-xl overflow-hidden">
+            <button type="button" onClick={() => setClinicaOpen(v => !v)}
+              className={`w-full flex items-center gap-3 px-4 py-3.5 text-left transition-colors ${clinicaOpen ? "bg-muted/40" : "hover:bg-muted/20"}`}>
+              <ClipboardList className="w-4 h-4 text-primary/60 shrink-0" />
+              <span className="flex-1 text-sm font-medium">Datos clínicos adicionales</span>
+              <span className="text-xs text-muted-foreground mr-1">Motivo, examen, RAM…</span>
+              {clinicaOpen ? <ChevronUp className="w-4 h-4 text-muted-foreground shrink-0" /> : <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />}
+            </button>
+            {clinicaOpen && (
+              <div className="px-5 pb-5 pt-3 space-y-4 border-t border-border/60">
+                {[
+                  { k: "motivo_consulta" as const,      label: "Motivo de consulta",           placeholder: "¿Por qué acude hoy?" },
+                  { k: "signos_sintomas" as const,      label: "Signos y síntomas",             placeholder: "…" },
+                  { k: "examen_fisico" as const,        label: "Examen físico",                 placeholder: "Hallazgos…" },
+                  { k: "diagnostico" as const,          label: "Diagnóstico",                   placeholder: "Diagnóstico clínico…" },
+                  { k: "ram" as const,                  label: "RAM (reacciones adversas)",     placeholder: "Alergias conocidas…" },
+                  { k: "antecedentes" as const,         label: "Antecedentes",                  placeholder: "Médicos, quirúrgicos…" },
+                  { k: "medicacion" as const,           label: "Medicación actual",             placeholder: "Medicamentos en uso…" },
+                  { k: "examenes_auxiliares" as const,  label: "Exámenes auxiliares",           placeholder: "Laboratorio, imágenes…" },
+                  { k: "fur" as const,                  label: "FUR — Fecha última regla",      placeholder: "" },
+                  { k: "recomendaciones" as const,      label: "Recomendaciones post-procedimiento", placeholder: "Cuidados, restricciones…" },
+                ].map(({ k, label, placeholder }) => (
+                  <div key={k}>
+                    <label className={LABEL_E}>{label}</label>
+                    {k === "fur" ? (
+                      <input type="date" value={fields[k]} onChange={set(k)} className={INPUT_E} />
+                    ) : (
+                      <textarea value={fields[k]} onChange={set(k)} rows={2}
+                        className={`${INPUT_E} resize-none`} placeholder={placeholder} />
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-border bg-muted/10 flex gap-3 shrink-0">
+          <button type="button" onClick={onClose}
+            className="flex-1 py-2.5 rounded-lg border border-border text-sm font-medium hover:bg-muted transition-colors">
+            Cancelar
+          </button>
+          <button type="button" onClick={handleSave} disabled={isPending || selectedTrats.length === 0}
+            className="flex-1 btn-primary py-2.5 justify-center disabled:opacity-50 disabled:cursor-not-allowed">
+            {isPending
+              ? <><Loader2 className="w-4 h-4 animate-spin" /> Guardando…</>
+              : <><Save className="w-4 h-4" /> Guardar cambios</>}
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Card de Evolución
 // ─────────────────────────────────────────────────────────────────────────────
-function EvolucionCard({ evolucion, defaultOpen = false }: { evolucion: EvolucionConProcs; defaultOpen?: boolean }) {
+function EvolucionCard({ evolucion, historiaId, defaultOpen = false }: { evolucion: EvolucionConProcs; historiaId: string; defaultOpen?: boolean }) {
   const [expanded, setExpanded] = useState(defaultOpen);
+  const [editOpen, setEditOpen] = useState(false);
 
   const procsDelCatalogo = (evolucion.procedimientos_consulta ?? [])
     .filter(p => p.tratamientos_catalogo)
@@ -393,10 +724,11 @@ function EvolucionCard({ evolucion, defaultOpen = false }: { evolucion: Evolucio
 
   return (
     <div className="card-premium overflow-hidden">
-      <button
-        onClick={() => setExpanded(p => !p)}
-        className="w-full flex items-start gap-4 px-5 py-4 hover:bg-muted/20 transition-colors text-left group"
-      >
+      <div className="flex items-start gap-4 px-5 py-4">
+        <button
+          onClick={() => setExpanded(p => !p)}
+          className="flex-1 flex items-start gap-4 text-left min-w-0"
+        >
         <div className="shrink-0 flex flex-col items-center gap-1 pt-1">
           <div className="w-2.5 h-2.5 rounded-full bg-primary border-2 border-primary/30" />
         </div>
@@ -437,7 +769,17 @@ function EvolucionCard({ evolucion, defaultOpen = false }: { evolucion: Evolucio
             </div>
           )}
         </div>
-      </button>
+        </button>
+        {/* Botón editar — fuera del botón expand */}
+        {!evolucion.is_locked && (
+          <button
+            onClick={() => setEditOpen(true)}
+            className="shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-border hover:border-primary/40 hover:bg-primary/5 text-muted-foreground hover:text-primary transition-all text-xs font-medium self-center"
+          >
+            <Pencil className="w-3 h-3" /> Editar
+          </button>
+        )}
+      </div>
 
       <AnimatePresence initial={false}>
         {expanded && (
@@ -493,6 +835,13 @@ function EvolucionCard({ evolucion, defaultOpen = false }: { evolucion: Evolucio
           </motion.div>
         )}
       </AnimatePresence>
+
+      <EditarConsultaDrawer
+        evolucion={evolucion}
+        historiaId={historiaId}
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+      />
     </div>
   );
 }
@@ -701,7 +1050,7 @@ export function HistoriaClinicaTab({ pacienteId, pacienteNombre }: Props) {
               <div className="absolute left-[18px] top-5 bottom-5 w-px bg-gradient-to-b from-primary/40 via-primary/20 to-transparent" />
               <div className="space-y-2 pl-1">
                 {evoluciones.map((ev, i) => (
-                  <EvolucionCard key={ev.id} evolucion={ev} defaultOpen={i === 0} />
+                  <EvolucionCard key={ev.id} evolucion={ev} historiaId={historia.id} defaultOpen={i === 0} />
                 ))}
               </div>
             </div>
