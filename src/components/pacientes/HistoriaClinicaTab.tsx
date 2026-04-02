@@ -115,16 +115,34 @@ function useActualizarEvolucion() {
     }) => {
       const supabase = createClient();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error: updError } = await (supabase as any)
+      const s = supabase as any;
+
+      // 1. Actualizar la evolución
+      const { error: updError } = await s
         .from("evoluciones_clinicas").update(payload).eq("id", id);
       if (updError) throw updError;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error: delError } = await (supabase as any)
+
+      // 2. Obtener procedimientos actuales de esta evolución
+      const { data: procsActuales } = await s
+        .from("procedimientos_consulta").select("id, tratamiento_id").eq("evolucion_id", id);
+      const actualesIds: string[] = (procsActuales ?? []).map((p: { id: string }) => p.id);
+
+      // 3. Nullificar la referencia en seguimientos_renovacion antes de borrar
+      //    (la FK es nullable, así que esto evita la violación de constraint)
+      if (actualesIds.length > 0) {
+        await s.from("seguimientos_renovacion")
+          .update({ procedimiento_consulta_id: null })
+          .in("procedimiento_consulta_id", actualesIds);
+      }
+
+      // 4. Borrar todos los procedimientos antiguos
+      const { error: delError } = await s
         .from("procedimientos_consulta").delete().eq("evolucion_id", id);
       if (delError) throw delError;
+
+      // 5. Insertar los nuevos seleccionados
       if (nuevaTratamientoIds.length > 0) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { error: insError } = await (supabase as any)
+        const { error: insError } = await s
           .from("procedimientos_consulta")
           .insert(nuevaTratamientoIds.map(tid => ({ evolucion_id: id, tratamiento_id: tid })));
         if (insError) throw insError;
