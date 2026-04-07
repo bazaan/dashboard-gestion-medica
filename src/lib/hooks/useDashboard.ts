@@ -26,7 +26,7 @@ export function useDashboardStats() {
         (supabase as any)
           .from("pacientes")
           .select("*", { count: "exact", head: true })
-          .eq("is_active", true),
+          .neq("estado", "inactivo"),
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (supabase as any)

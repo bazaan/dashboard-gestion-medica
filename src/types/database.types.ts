@@ -19,6 +19,7 @@ export type TipoPiel        = 'seca' | 'grasa' | 'mixta' | 'normal' | 'sensible'
 export type EstadoSeguimiento = 'vigente' | 'proximo_vencer' | 'vencido' | 'renovado' | 'permanente'
 export type TipoRecordatorio  = '30_dias' | '7_dias' | 'vencimiento'
 export type EstadoRecordatorio = 'pendiente' | 'enviado' | 'fallido'
+export type EstadoPermiso      = 'pendiente' | 'aprobado' | 'rechazado'
 
 export type TratamientoCategoria =
   | 'hilos_dermosustentacion'

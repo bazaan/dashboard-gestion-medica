@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import type { Profile, UserRole } from "@/types/database.types";
 import { motion, AnimatePresence } from "framer-motion";
 import { useDashboardStats } from "@/lib/hooks/useDashboard";
+import { NotificacionesPermiso } from "@/components/NotificacionesPermiso";
 
 const NAV_LINKS = [
   { name: "Panel",          href: "/",               icon: LayoutDashboard, roles: ["admin", "doctor", "recepcion"] as UserRole[] },
@@ -47,6 +48,7 @@ function NavContent({
   onLogout: () => void;
   onClose?: () => void;
   urgentCount?: number;
+  role?: string;
 }) {
   return (
     <>
@@ -110,6 +112,11 @@ function NavContent({
           );
         })}
       </nav>
+
+      {/* Notificaciones de acceso — solo para admin/doctor */}
+      {(profile.role === "admin" || profile.role === "doctor") && (
+        <NotificacionesPermiso />
+      )}
 
       {/* Footer — user card */}
       <div className="px-4 pb-6 pt-4 space-y-4">

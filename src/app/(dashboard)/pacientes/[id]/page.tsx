@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, use } from "react";
+import { useState, use, useEffect, useCallback } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import {
   ArrowLeft, User, Phone, MapPin, Stethoscope, Camera,
@@ -10,8 +11,12 @@ import {
 import { FotosTimeline } from "@/components/pacientes/FotosTimeline";
 import { HistoriaClinicaTab } from "@/components/pacientes/HistoriaClinicaTab";
 import { NuevaConsultaDrawer } from "@/components/pacientes/NuevaConsultaDrawer";
+import { SolicitarAccesoPanel } from "@/components/pacientes/SolicitarAccesoPanel";
 import { usePaciente, calcularEdad, getInitials } from "@/lib/hooks/usePacientes";
 import { useHistoriaClinica } from "@/lib/hooks/useConsultas";
+import { usePermisoActivo } from "@/lib/hooks/usePermisosAcceso";
+import { createClient } from "@/lib/supabase/client";
+import type { UserRole } from "@/types/database.types";
 
 const TABS = [
   { id: "fotos",   label: "Fotos & Evolución",  icon: Camera      },
@@ -41,19 +46,83 @@ function InfoRow({ label, value, icon: Icon }: { label: string; value?: string |
 
 export default function PacientePerfilPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const [activeTab, setActiveTab]         = useState("fotos");
+  const [activeTab, setActiveTab]                   = useState("fotos");
   const [consultaDrawerOpen, setConsultaDrawerOpen] = useState(false);
+  const [userRole, setUserRole]                     = useState<UserRole | null>(null);
+  const [accesoDesbloqueado, setAccesoDesbloqueado] = useState(false);
+  const queryClient = useQueryClient();
 
   const { data: paciente, isLoading, error } = usePaciente(id);
-  const { data: historia } = useHistoriaClinica(id);
+  const { data: permisoActivo, isLoading: checkingPermiso } = usePermisoActivo(
+    id,
+    userRole === "recepcion"
+  );
 
-  if (isLoading) {
+  // Solo cargar datos médicos si es admin/doctor, o si recepcion ya tiene permiso
+  const puedeVerExpediente =
+    userRole === "admin" ||
+    userRole === "doctor" ||
+    !!permisoActivo ||
+    accesoDesbloqueado;
+
+  const { data: historia } = useHistoriaClinica(id, puedeVerExpediente);
+
+  // Cargar rol del usuario actual
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (supabase as any)
+        .from("profiles")
+        .select("role")
+        .eq("id", user.id)
+        .single()
+        .then(({ data }: { data: { role: UserRole } | null }) => {
+          setUserRole(data?.role ?? null);
+        });
+    });
+  }, []);
+
+  const handleAccesoAprobado = useCallback(() => {
+    // Invalidar queries médicos para que se refetchen con el permiso ya aprobado
+    queryClient.invalidateQueries({ queryKey: ["historia", id] });
+    queryClient.invalidateQueries({ queryKey: ["consultas", id] });
+    queryClient.invalidateQueries({ queryKey: ["fotos", id] });
+    setAccesoDesbloqueado(true);
+  }, [id, queryClient]);
+
+  if (isLoading || userRole === null || (userRole === "recepcion" && checkingPermiso)) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="flex flex-col items-center gap-3 text-muted-foreground">
           <Loader2 className="w-8 h-8 animate-spin text-primary" />
           <p className="text-sm">Cargando perfil del paciente…</p>
         </div>
+      </div>
+    );
+  }
+
+  // Recepcion sin permiso aprobado → mostrar panel de solicitud
+  if (
+    paciente &&
+    userRole === "recepcion" &&
+    !permisoActivo &&
+    !accesoDesbloqueado
+  ) {
+    return (
+      <div className="min-h-full bg-background">
+        <header className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b border-border">
+          <div className="flex items-center gap-3 px-4 md:px-8 h-14 md:h-16">
+            <Link href="/pacientes" className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground">
+              <ArrowLeft className="w-4 h-4" />
+            </Link>
+            <span className="font-serif text-sm md:text-base font-semibold text-foreground">
+              {paciente.nombres} {paciente.apellidos}
+            </span>
+          </div>
+        </header>
+        <SolicitarAccesoPanel paciente={paciente} onAccesoAprobado={handleAccesoAprobado} />
       </div>
     );
   }

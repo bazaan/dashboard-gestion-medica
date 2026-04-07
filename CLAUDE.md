@@ -84,10 +84,16 @@ Los tipos TypeScript de las tablas se definen manualmente en `src/types/database
 npx supabase gen types typescript --project-id wnbamzjieowfqcowppxc > src/types/database.types.ts
 ```
 
-**Schema en tres partes** (todas ejecutadas en producción):
+**Schema acumulado** (todas ejecutadas en producción en este orden):
 - `supabase/schema.sql` — tablas base
 - `supabase/migration_v2.sql` — sistema completo de renovaciones y recordatorios
 - `supabase/migration_v3.sql` — formulario médico completo en `historias_clinicas`: signos vitales (`fc`, `fr`, `pa`, `imc`, `rq`, `asa`), filiación (`religion`, `estado_civil`, `grado_instruccion`, `procedencia`), anamnesis, antecedentes fisiológicos, patológicos (`ant_patologicos[]`), alergias (`alergias_medicamentos[]`), fármacos (`farmacos_lista[]`), quirúrgicos y familiares
+- `supabase/migration_v4.sql` — RLS policies para rol `recepcion` en `evoluciones_clinicas`
+- `supabase/migration_v5.sql` — campos de filiación en tabla `pacientes`
+- `supabase/migration_v6.sql` — RLS fixes para `fotos_antes_despues` y Storage bucket
+- `supabase/migration_v7.sql` — acceso completo de escritura para `recepcion` en `historias_clinicas` y `evoluciones_clinicas`
+- `supabase/migration_v8.sql` — fix de trigger functions con `SECURITY DEFINER` para compatibilidad con RLS de Supabase
+- `supabase/migration_v9.sql` — permite a `recepcion` crear y editar `tratamientos_catalogo`
 
 **Tablas principales**: `profiles`, `pacientes`, `citas`, `tratamientos_catalogo`, `historias_clinicas`, `evoluciones_clinicas`, `procedimientos_consulta`, `seguimientos_renovacion`, `recordatorios_log`, `fotos_antes_despues`, `audit_log`
 
@@ -243,7 +249,8 @@ Los tokens de Tailwind se definen en `globals.css` y se usan directamente como c
 
 ## Configuración Especial
 
-- **`next.config.ts`**: Usa `__dirname` para aislar el Turbopack root y evitar compilaciones en directorios padre.
+- **`next.config.ts`**: Usa `__dirname` para aislar el Turbopack root y evitar compilaciones en directorios padre. Define `basePath: "/staff"` — todas las rutas en producción (Netlify) van bajo `/staff/*`. En desarrollo con `-p 3005` el `basePath` sigue activo, por lo que las URLs locales también usan `/staff/`.
+- **`netlify.toml`**: Configuración de deploy. El sitio se despliega en Netlify apuntando a la rama `main`.
 
 ## Roadmap (Próximos Pasos)
 

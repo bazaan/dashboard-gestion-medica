@@ -45,7 +45,7 @@ export function useConsultas(pacienteId: string) {
 }
 
 // ── Historial clínico (historia base) ─────────────────────────
-export function useHistoriaClinica(pacienteId: string) {
+export function useHistoriaClinica(pacienteId: string, enabled = true) {
   return useQuery({
     queryKey: ["historia", pacienteId],
     queryFn: async () => {
@@ -60,7 +60,7 @@ export function useHistoriaClinica(pacienteId: string) {
       if (error) throw error;
       return data;
     },
-    enabled: !!pacienteId,
+    enabled: !!pacienteId && enabled,
     staleTime: 10 * 60 * 1000,
   });
 }
