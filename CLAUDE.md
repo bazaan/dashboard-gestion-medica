@@ -47,10 +47,11 @@ El root layout (`src/app/layout.tsx`) sólo inyecta fuentes, `<QueryProvider>` y
 
 **Custom hooks**: se ubican en `src/lib/hooks/` (no en `src/components/`):
 - `useFotos` — upload/delete de fotos en Supabase Storage
-- `useConsultas` / `useHistoriaClinica` / `useTratamientosCatalogo` / `useCrearConsulta` — consultas y evoluciones clínicas
+- `useConsultas` / `useHistoriaClinica` / `useTratamientosCatalogo` / `useCrearConsulta` — consultas y evoluciones clínicas. `useHistoriaClinica` acepta segundo param `enabled: boolean` para diferir la carga hasta que haya permiso.
 - `usePacientes` — lista, creación y búsqueda de pacientes
 - `useDashboard` — estadísticas del día para el panel principal
 - `useProcedimientos` — catálogo de tratamientos
+- `usePermisosAcceso` — sistema de permisos de acceso a pacientes (ver sección abajo)
 
 **Schemas Zod**: `src/lib/schemas/paciente.schema.ts` y `src/lib/schemas/consulta.schema.ts`.
 
@@ -94,8 +95,9 @@ npx supabase gen types typescript --project-id wnbamzjieowfqcowppxc > src/types/
 - `supabase/migration_v7.sql` — acceso completo de escritura para `recepcion` en `historias_clinicas` y `evoluciones_clinicas`
 - `supabase/migration_v8.sql` — fix de trigger functions con `SECURITY DEFINER` para compatibilidad con RLS de Supabase
 - `supabase/migration_v9.sql` — permite a `recepcion` crear y editar `tratamientos_catalogo`
+- `supabase/migration_v10.sql` — sistema de permisos de acceso a pacientes: tabla `permisos_acceso`, RLS actualizado en `historias_clinicas`/`evoluciones_clinicas`/`fotos_antes_despues`, Realtime habilitado
 
-**Tablas principales**: `profiles`, `pacientes`, `citas`, `tratamientos_catalogo`, `historias_clinicas`, `evoluciones_clinicas`, `procedimientos_consulta`, `seguimientos_renovacion`, `recordatorios_log`, `fotos_antes_despues`, `audit_log`
+**Tablas principales**: `profiles`, `pacientes`, `citas`, `tratamientos_catalogo`, `historias_clinicas`, `evoluciones_clinicas`, `procedimientos_consulta`, `seguimientos_renovacion`, `recordatorios_log`, `fotos_antes_despues`, `audit_log`, `permisos_acceso`
 
 **Vistas**: `dashboard_stats`, `renovaciones_vista`
 
@@ -121,8 +123,44 @@ SUPABASE_SERVICE_ROLE_KEY=...
 
 Visibilidad en sidebar por rol:
 - `recepcion`: Panel, Pacientes, Renovaciones
-- `doctor`: todo lo anterior + Procedimientos + Plantillas WA
-- `admin`: todo + Configuración
+- `doctor`: todo lo anterior + Procedimientos + Plantillas WA + Solicitudes de acceso
+- `admin`: todo + Configuración + Solicitudes de acceso
+
+**Permisos de edición en `/pacientes`**: solo `admin` y `doctor` ven los botones de editar y eliminar. Recepción no puede editar datos de pacientes desde la lista.
+
+## Sistema de Permisos de Acceso a Pacientes
+
+La Dra. Dennisse es muy protectora de la base de datos. Recepción **no puede abrir el expediente clínico de un paciente** sin aprobación explícita.
+
+**Flujo:**
+1. Recepción entra a `/pacientes/[id]` → ve pantalla "Acceso restringido" con botón "Solicitar acceso"
+2. Al solicitar → se crea registro en `permisos_acceso` con `estado = 'pendiente'`
+3. La doctora recibe notificación en tiempo real en el sidebar (ítem "Solicitudes de acceso" con badge amarillo parpadeante)
+4. La doctora aprueba o rechaza desde el panel expandible del sidebar
+5. Recepción ve la respuesta al instante via Supabase Realtime — si aprobado, el perfil se carga automáticamente
+6. El acceso aprobado dura **hasta medianoche del mismo día** (`fecha_expira = CURRENT_DATE`)
+
+**Tabla `permisos_acceso`** (columnas clave):
+- `paciente_id`, `paciente_nombre` — qué paciente se solicitó
+- `solicitado_por`, `solicitado_por_nombre` — quién pidió acceso
+- `aprobado_por` — quién lo aprobó (doctor/admin)
+- `estado` — `pendiente | aprobado | rechazado`
+- `fecha_expira` — fecha de expiración (día completo)
+
+**RLS actualizado** (migration_v10): `historias_clinicas`, `evoluciones_clinicas` y `fotos_antes_despues` requieren `permisos_acceso` aprobado y vigente para recepción. Admin/doctor siempre tienen acceso.
+
+**Componentes clave:**
+- `src/components/pacientes/SolicitarAccesoPanel.tsx` — pantalla de bloqueo con estados: sin solicitud / esperando / aprobado. Usa Supabase Realtime para detectar aprobación al instante.
+- `src/components/NotificacionesPermiso.tsx` — panel expandible inline en sidebar para la doctora. Agrupa solicitudes por paciente, tiene buscador por nombre de paciente o solicitante, botones Aprobar/Rechazar por cada solicitud.
+
+**Hooks en `src/lib/hooks/usePermisosAcceso.ts`:**
+- `usePermisoActivo(pacienteId)` — verifica si hay permiso aprobado vigente para el usuario actual
+- `useSolicitudPendiente(pacienteId)` — solicitud pendiente activa (poll cada 3s cuando existe)
+- `usePermisosPendientes()` — todas las solicitudes pendientes para la doctora (con Realtime)
+- `useSolicitarAcceso()` — mutation para crear solicitud (idempotente: no duplica si ya existe una)
+- `useResponderPermiso()` — mutation para aprobar/rechazar (solo admin/doctor)
+
+**En `pacientes/[id]/page.tsx`**: carga el rol del usuario, verifica `permisoActivo`. Si es recepción sin permiso → muestra `SolicitarAccesoPanel`. Al aprobarse, invalida los query keys de historia/consultas/fotos para refetch con RLS desbloqueado.
 
 ## Sistema de Recordatorios WhatsApp (`reminders-service/`)
 
@@ -225,7 +263,9 @@ Mejoras implementadas:
 - **Renovaciones**: filtros de búsqueda stack vertical en móvil, `active:bg-muted/40` en filas móviles, WA links con código de país `+51` (`slice(-9)`)
 - **Pacientes**: vista card en móvil, vista tabla en desktop
 
-**Bug conocido y corregido**: En `NuevaConsultaDrawer`, `useTratamientosCatalogo` no selecciona el campo `is_active`, por lo que filtrarlo en el cliente devolvía array vacío. Solución: eliminar el filtro redundante ya que el hook ya consulta `.eq("is_active", true)`.
+**Bugs corregidos:**
+- `NuevaConsultaDrawer`: `useTratamientosCatalogo` no seleccionaba `is_active`, filtro en cliente devolvía array vacío. Solución: eliminado el filtro redundante.
+- `useDashboard` contador de pacientes: usaba `.eq("is_active", true)` pero `pacientes` no tiene esa columna — siempre devolvía 0. Corregido a `.neq("estado", "inactivo")`.
 
 ## Guía de Estilos (Branding Oficial)
 
@@ -256,8 +296,9 @@ Los tokens de Tailwind se definen en `globals.css` y se usan directamente como c
 
 1. **Resolver entrega de templates MARKETING** — Opción A: verificar `+51 936 196 001` con OTP vía Meta API (`POST /{phone_number_id}/request_code`). Opción B: re-someter `0d`, `7d`, `30d` como UTILITY en Meta Business Manager (1-2 días aprobación).
 2. **Deploy reminders-service a Railway** — copiar variables de `reminders-service/.env` al proyecto Railway
-3. **Deploy dashboard a Netlify** — push a main branch
+3. ~~**Deploy dashboard a Netlify**~~ — ✅ conectado a rama `main`, deploy automático en cada push
 4. ~~**CRUD Pacientes completo**~~ — ✅ implementado (edición y eliminación en `NuevoPacienteDrawer`)
 5. **Middleware de autenticación** — activar `src/proxy.ts` renombrándolo a `src/middleware.ts`
+6. ~~**Sistema de permisos de acceso a pacientes**~~ — ✅ implementado (migration_v10 + `usePermisosAcceso` + `SolicitarAccesoPanel` + `NotificacionesPermiso`)
 
 > Ver `PROYECTO.md` para la bitácora completa, arquitectura del sistema y notas técnicas detalladas.
