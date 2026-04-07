@@ -10,7 +10,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { NuevoPacienteDrawer } from "@/components/pacientes/NuevoPacienteDrawer";
 import { usePacientes, useEliminarPaciente, useActualizarEstadoPaciente, getInitials } from "@/lib/hooks/usePacientes";
-import type { Paciente, PacienteEstado } from "@/types/database.types";
+import { createClient } from "@/lib/supabase/client";
+import type { Paciente, PacienteEstado, UserRole } from "@/types/database.types";
 
 const ESTADO_BADGE: Record<string, string> = {
   vip:      "bg-primary/10 text-primary border-primary/20 font-semibold",
@@ -29,11 +30,13 @@ function AccionesMenu({
   onEdit,
   onDelete,
   onEstado,
+  canEdit = true,
 }: {
   paciente: Paciente;
   onEdit: () => void;
   onDelete: () => void;
   onEstado: (estado: PacienteEstado) => void;
+  canEdit?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -60,13 +63,15 @@ function AccionesMenu({
           className="absolute right-0 top-8 z-50 w-48 bg-background border border-border rounded-xl shadow-lg py-1 animate-in fade-in slide-in-from-top-1 duration-150"
           onClick={(e) => e.stopPropagation()}
         >
-          <button
-            onClick={() => { onEdit(); setOpen(false); }}
-            className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-foreground hover:bg-muted transition-colors text-left"
-          >
-            <Pencil className="w-3.5 h-3.5 text-muted-foreground" />
-            Editar datos
-          </button>
+          {canEdit && (
+            <button
+              onClick={() => { onEdit(); setOpen(false); }}
+              className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-foreground hover:bg-muted transition-colors text-left"
+            >
+              <Pencil className="w-3.5 h-3.5 text-muted-foreground" />
+              Editar datos
+            </button>
+          )}
 
           <div className="my-1 border-t border-border/60" />
 
@@ -173,6 +178,19 @@ export default function PacientesPage() {
   const [editPaciente, setEditPaciente] = useState<Paciente | undefined>(undefined);
   const [deletePaciente, setDeletePaciente] = useState<Paciente | null>(null);
   const [page, setPage]             = useState(1);
+  const [userRole, setUserRole]     = useState<UserRole | null>(null);
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (supabase as any).from("profiles").select("role").eq("id", user.id).single()
+        .then(({ data }: { data: { role: UserRole } | null }) => setUserRole(data?.role ?? null));
+    });
+  }, []);
+
+  const canEdit = userRole === "admin" || userRole === "doctor";
 
   const { data: pacientes = [], isLoading, error } = usePacientes(search);
   const { mutate: eliminar, isPending: eliminando } = useEliminarPaciente();
@@ -325,6 +343,7 @@ export default function PacientesPage() {
                       onEdit={() => handleEdit(p)}
                       onDelete={() => setDeletePaciente(p)}
                       onEstado={(estado) => cambiarEstado({ id: p.id, estado })}
+                      canEdit={canEdit}
                     />
                   </div>
                 ))}
@@ -393,13 +412,15 @@ export default function PacientesPage() {
                             >
                               <Eye className="w-4 h-4" />
                             </Link>
-                            <button
-                              onClick={(e) => { e.stopPropagation(); handleEdit(p); }}
-                              className="p-1.5 rounded-lg hover:bg-primary/10 text-muted-foreground hover:text-primary transition-all"
-                              title="Editar"
-                            >
-                              <Pencil className="w-4 h-4" />
-                            </button>
+                            {canEdit && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleEdit(p); }}
+                                className="p-1.5 rounded-lg hover:bg-primary/10 text-muted-foreground hover:text-primary transition-all"
+                                title="Editar"
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </button>
+                            )}
                             <AccionesMenu
                               paciente={p}
                               onEdit={() => handleEdit(p)}
