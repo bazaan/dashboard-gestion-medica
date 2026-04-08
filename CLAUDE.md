@@ -300,5 +300,6 @@ Los tokens de Tailwind se definen en `globals.css` y se usan directamente como c
 4. ~~**CRUD Pacientes completo**~~ — ✅ implementado (edición y eliminación en `NuevoPacienteDrawer`)
 5. **Middleware de autenticación** — activar `src/proxy.ts` renombrándolo a `src/middleware.ts`
 6. ~~**Sistema de permisos de acceso a pacientes**~~ — ✅ implementado (migration_v10 + `usePermisosAcceso` + `SolicitarAccesoPanel` + `NotificacionesPermiso`)
+7. **Contrato de confidencialidad** — la Dra. requiere un acuerdo firmado por cada colaborador que acceda al sistema. Prompt generado para producirlo via claude.ai (Ley N° 29733 Perú). Pendiente imprimir y firmar con cada miembro del equipo.
 
 > Ver `PROYECTO.md` para la bitácora completa, arquitectura del sistema y notas técnicas detalladas.
