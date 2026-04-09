@@ -154,7 +154,7 @@ export function NotificacionesPermiso() {
                   </div>
 
                   {/* Grupos */}
-                  <div className="px-3 pb-3 space-y-3 max-h-[45vh] overflow-y-auto overscroll-contain">
+                  <div className="px-3 pb-3 space-y-3">
                     {grupos.length === 0 && (
                       <p className="text-xs text-white/30 text-center py-4">
                         Sin resultados para &ldquo;{search}&rdquo;
