@@ -1,20 +1,26 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQueryClient } from "@tanstack/react-query";
-import { X, User, Phone, MapPin, Stethoscope, ShieldCheck, Loader2, ChevronRight, Pencil } from "lucide-react";
+import { X, User, Phone, MapPin, Stethoscope, ShieldCheck, Loader2, ChevronRight, Pencil, Lock, Clock } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { pacienteSchema, type PacienteFormData } from "@/lib/schemas/paciente.schema";
+import {
+  usePermisoActivo,
+  useSolicitudPendiente,
+  useSolicitarAcceso,
+} from "@/lib/hooks/usePermisosAcceso";
 import type { Paciente } from "@/types/database.types";
 
 interface Props {
   open: boolean;
   onClose: () => void;
   onSuccess: () => void;
-  paciente?: Paciente; // si se pasa → modo edición
+  paciente?: Paciente;    // si se pasa → modo edición
+  canEditPhone?: boolean; // false = recepcion sin permiso (default: true)
 }
 
 const SECCIONES = [
@@ -24,6 +30,68 @@ const SECCIONES = [
   { id: "medico", label: "Antecedentes Médicos", icon: Stethoscope },
   { id: "consentimiento", label: "Consentimiento", icon: ShieldCheck },
 ];
+
+// ── Teléfono bloqueado en el formulario de edición ────────────
+function PhoneFieldLocked({
+  paciente,
+  onUnlock,
+}: {
+  paciente: Paciente;
+  onUnlock: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const { data: permisoActivo } = usePermisoActivo(paciente.id);
+  const { data: pendiente }     = useSolicitudPendiente(paciente.id);
+  const { mutate: solicitar, isPending: solicitando } = useSolicitarAcceso();
+
+  // Realtime: detectar aprobación al instante
+  useEffect(() => {
+    const supabase = createClient();
+    const channel  = supabase
+      .channel(`phone-edit-${paciente.id}`)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "permisos_acceso", filter: `paciente_id=eq.${paciente.id}` },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ["permiso-activo",   paciente.id] });
+          queryClient.invalidateQueries({ queryKey: ["permiso-pendiente", paciente.id] });
+        }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [paciente.id, queryClient]);
+
+  // Cuando se aprueba, desbloquear el campo
+  useEffect(() => {
+    if (permisoActivo) onUnlock();
+  }, [permisoActivo, onUnlock]);
+
+  if (pendiente) {
+    return (
+      <div className="input-premium flex items-center gap-2 text-amber-600/70 cursor-not-allowed bg-amber-50/50">
+        <Clock className="w-4 h-4 animate-pulse shrink-0" />
+        <span className="text-sm">Esperando aprobación de la Dra.</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="input-premium flex items-center gap-2.5 bg-muted/60 cursor-not-allowed select-none">
+        <Lock className="w-4 h-4 text-muted-foreground/40 shrink-0" />
+        <span className="font-mono tracking-widest text-muted-foreground/30 text-sm">••••••••</span>
+      </div>
+      <button
+        type="button"
+        onClick={() => solicitar({ pacienteId: paciente.id, pacienteNombre: `${paciente.nombres} ${paciente.apellidos}` })}
+        disabled={solicitando}
+        className="text-xs text-primary/70 hover:text-primary underline underline-offset-2 transition-colors disabled:opacity-50"
+      >
+        {solicitando ? "Enviando solicitud…" : "Solicitar permiso para editar teléfono"}
+      </button>
+    </div>
+  );
+}
 
 function generateNumeroHistoria() {
   const year = new Date().getFullYear();
@@ -48,24 +116,38 @@ function Field({
   );
 }
 
-export function NuevoPacienteDrawer({ open, onClose, onSuccess, paciente }: Props) {
+export function NuevoPacienteDrawer({ open, onClose, onSuccess, paciente, canEditPhone = true }: Props) {
   const overlayRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
   const esEdicion = !!paciente;
+
+  // Teléfono desbloqueado por permiso aprobado durante esta sesión
+  const [phoneDesbloqueado, setPhoneDesbloqueado] = useState(false);
+
+  // El teléfono está bloqueado cuando: edición + recepcion (canEditPhone=false) + sin desbloqueo
+  const phoneBloqueado = esEdicion && !canEditPhone && !phoneDesbloqueado;
 
   const {
     register,
     handleSubmit,
     reset,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<PacienteFormData>({
     resolver: zodResolver(pacienteSchema),
     defaultValues: { ciudad: "Lima", consentimiento_datos: false },
   });
 
+  // Desbloquear campo de teléfono y pre-llenarlo con el valor real
+  const handlePhoneUnlock = useCallback(() => {
+    setPhoneDesbloqueado(true);
+    if (paciente?.telefono) setValue("telefono", paciente.telefono);
+  }, [paciente, setValue]);
+
   // Pre-llenar formulario en modo edición
   useEffect(() => {
     if (open && paciente) {
+      setPhoneDesbloqueado(false); // reset al abrir
       reset({
         nombres:               paciente.nombres,
         apellidos:             paciente.apellidos,
@@ -77,7 +159,8 @@ export function NuevoPacienteDrawer({ open, onClose, onSuccess, paciente }: Prop
         estado_civil:          paciente.estado_civil || "",
         grado_instruccion:     paciente.grado_instruccion || "",
         procedencia:           paciente.procedencia || "",
-        telefono:              paciente.telefono,
+        // Si recepcion, no pre-llenamos el teléfono (campo bloqueado visualmente)
+        telefono:              canEditPhone ? paciente.telefono : "",
         telefono_alt:          paciente.telefono_alt || "",
         email:                 paciente.email || "",
         direccion:             paciente.direccion || "",
@@ -87,12 +170,13 @@ export function NuevoPacienteDrawer({ open, onClose, onSuccess, paciente }: Prop
         alergias_texto:        (paciente.alergias ?? []).join(", "),
         antecedentes_medicos:  paciente.antecedentes_medicos || "",
         medicamentos_actuales: paciente.medicamentos_actuales || "",
-        consentimiento_datos:  true, // ya fue aceptado al crear
+        consentimiento_datos:  true,
       });
     } else if (open && !paciente) {
+      setPhoneDesbloqueado(false);
       reset({ ciudad: "Lima", consentimiento_datos: false });
     }
-  }, [open, paciente, reset]);
+  }, [open, paciente, reset, canEditPhone]);
 
   // Cerrar con Escape
   useEffect(() => {
@@ -118,7 +202,8 @@ export function NuevoPacienteDrawer({ open, onClose, onSuccess, paciente }: Prop
       apellidos:             data.apellidos,
       dni:                   data.dni,
       email:                 data.email || null,
-      telefono:              data.telefono,
+      // Si el teléfono está bloqueado, preservar el valor original de la DB
+      telefono:              phoneBloqueado ? (paciente?.telefono ?? "") : data.telefono,
       telefono_alt:          data.telefono_alt || null,
       fecha_nacimiento:      data.fecha_nacimiento,
       sexo:                  data.sexo || null,
@@ -288,9 +373,18 @@ export function NuevoPacienteDrawer({ open, onClose, onSuccess, paciente }: Prop
                 <div className="flex-1 h-px bg-border" />
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <Field label="Teléfono Principal" required error={errors.telefono?.message}>
-                  <input {...register("telefono")} placeholder="+51 987 654 321" className="input-premium" />
-                </Field>
+                {phoneBloqueado ? (
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-accent/70 uppercase tracking-wider flex items-center gap-1">
+                      Teléfono Principal <span className="text-primary">*</span>
+                    </label>
+                    <PhoneFieldLocked paciente={paciente!} onUnlock={handlePhoneUnlock} />
+                  </div>
+                ) : (
+                  <Field label="Teléfono Principal" required error={errors.telefono?.message}>
+                    <input {...register("telefono")} placeholder="+51 987 654 321" className="input-premium" />
+                  </Field>
+                )}
                 <Field label="Teléfono Alternativo" error={errors.telefono_alt?.message}>
                   <input {...register("telefono_alt")} placeholder="+51 912 345 678" className="input-premium" />
                 </Field>

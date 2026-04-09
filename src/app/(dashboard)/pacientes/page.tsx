@@ -31,13 +31,13 @@ function AccionesMenu({
   onEdit,
   onDelete,
   onEstado,
-  canEdit = true,
+  canDelete = false,
 }: {
   paciente: Paciente;
   onEdit: () => void;
   onDelete: () => void;
   onEstado: (estado: PacienteEstado) => void;
-  canEdit?: boolean;
+  canDelete?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -64,15 +64,13 @@ function AccionesMenu({
           className="absolute right-0 top-8 z-50 w-48 bg-background border border-border rounded-xl shadow-lg py-1 animate-in fade-in slide-in-from-top-1 duration-150"
           onClick={(e) => e.stopPropagation()}
         >
-          {canEdit && (
-            <button
-              onClick={() => { onEdit(); setOpen(false); }}
-              className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-foreground hover:bg-muted transition-colors text-left"
-            >
-              <Pencil className="w-3.5 h-3.5 text-muted-foreground" />
-              Editar datos
-            </button>
-          )}
+          <button
+            onClick={() => { onEdit(); setOpen(false); }}
+            className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-foreground hover:bg-muted transition-colors text-left"
+          >
+            <Pencil className="w-3.5 h-3.5 text-muted-foreground" />
+            Editar datos
+          </button>
 
           <div className="my-1 border-t border-border/60" />
 
@@ -104,7 +102,7 @@ function AccionesMenu({
             </button>
           )}
 
-          {canEdit && (
+          {canDelete && (
             <>
               <div className="my-1 border-t border-border/60" />
               <button
@@ -201,7 +199,7 @@ export default function PacientesPage() {
     });
   }, []);
 
-  const canEdit    = userRole === "admin" || userRole === "doctor";
+  const canDelete   = userRole === "admin" || userRole === "doctor";
   const canSeePhone = userRole === "admin" || userRole === "doctor";
 
   const { data: pacientes = [], isLoading, error } = usePacientes(search);
@@ -212,7 +210,6 @@ export default function PacientesPage() {
   const totalPages = Math.max(1, Math.ceil(pacientes.length / PAGE_SIZE));
 
   function handleEdit(p: Paciente) {
-    if (!canEdit) { toast.error("Sin acceso para editar"); return; }
     setEditPaciente(p);
     setDrawerOpen(true);
   }
@@ -229,6 +226,7 @@ export default function PacientesPage() {
         onClose={handleCloseDrawer}
         onSuccess={handleCloseDrawer}
         paciente={editPaciente}
+        canEditPhone={canSeePhone}
       />
 
       {deletePaciente && (
@@ -356,7 +354,7 @@ export default function PacientesPage() {
                       onEdit={() => handleEdit(p)}
                       onDelete={() => setDeletePaciente(p)}
                       onEstado={(estado) => cambiarEstado({ id: p.id, estado })}
-                      canEdit={canEdit}
+                      canDelete={canDelete}
                     />
                   </div>
                 ))}
@@ -429,21 +427,19 @@ export default function PacientesPage() {
                             >
                               <Eye className="w-4 h-4" />
                             </Link>
-                            {canEdit && (
-                              <button
-                                onClick={(e) => { e.stopPropagation(); handleEdit(p); }}
-                                className="p-1.5 rounded-lg hover:bg-primary/10 text-muted-foreground hover:text-primary transition-all"
-                                title="Editar"
-                              >
-                                <Pencil className="w-4 h-4" />
-                              </button>
-                            )}
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleEdit(p); }}
+                              className="p-1.5 rounded-lg hover:bg-primary/10 text-muted-foreground hover:text-primary transition-all"
+                              title="Editar"
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </button>
                             <AccionesMenu
                               paciente={p}
                               onEdit={() => handleEdit(p)}
                               onDelete={() => setDeletePaciente(p)}
                               onEstado={(estado) => cambiarEstado({ id: p.id, estado })}
-                              canEdit={canEdit}
+                              canDelete={canDelete}
                             />
                           </div>
                         </td>
