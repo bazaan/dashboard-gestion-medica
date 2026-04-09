@@ -47,11 +47,11 @@ def build_template_30d(
     fecha = _format_fecha(fecha_vencimiento)
     content = (
         f"Hola {nombre} 😊\n\n"
-        f"Desde la Clínica Dra. Dennisse Arroyo queremos recordarte que tu tratamiento "
-        f"de {tratamiento} vencerá en 30 días, el {fecha}.\n\n"
-        f"Renovar a tiempo es la clave para mantener los resultados que lograste. "
-        f"¿Agendamos tu próxima sesión?\n\n"
-        f"Escríbenos cuando gustes 🌟\n\n"
+        f"En la Clínica Dra. Dennisse Arroyo nos encanta acompañarte en cada etapa "
+        f"de tu tratamiento.\n\n"
+        f"En 30 días será el momento ideal para tu próxima sesión de {tratamiento}. "
+        f"Agendarlo con anticipación te asegura el horario que más te acomoda.\n\n"
+        f"¿Cuándo te viene bien? Con gusto te reservamos 🌟\n\n"
         f"Responde STOP para dejar de recibir recordatorios."
     )
     return {
@@ -73,11 +73,11 @@ def build_template_7d(
     fecha = _format_fecha(fecha_vencimiento)
     content = (
         f"Hola {nombre} 💫\n\n"
-        f"Te recordamos de la Clínica Dra. Dennisse Arroyo que tu tratamiento "
-        f"de {tratamiento} vence en solo 7 días, el {fecha}.\n\n"
-        f"Es el momento ideal para renovar y seguir luciendo los resultados que tanto "
-        f"te gustan. ¡Tenemos disponibilidad esta semana!\n\n"
-        f"Escríbenos y te atendemos con gusto 🌸\n\n"
+        f"Es el momento perfecto para agendar tu próxima sesión de {tratamiento} "
+        f"en la Clínica Dra. Dennisse Arroyo.\n\n"
+        f"Quedan pocos días para aprovechar la disponibilidad que tenemos esta semana. "
+        f"¿Te agendamos?\n\n"
+        f"Escríbenos y con gusto te atendemos 🌟\n\n"
         f"Responde STOP para dejar de recibir recordatorios."
     )
     return {
@@ -99,11 +99,11 @@ def build_template_vencimiento(
     fecha = _format_fecha(fecha_vencimiento)
     content = (
         f"Hola {nombre} ✨\n\n"
-        f"Te contactamos de la Clínica Dra. Dennisse Arroyo. Tu tratamiento "
-        f"de {tratamiento} llegó a su fecha de renovación el {fecha}.\n\n"
-        f"¡Aún estás a tiempo de mantener tus resultados! Renovarlo ahora evita "
-        f"que los efectos disminuyan.\n\n"
-        f"Escríbenos y con gusto te agendamos 💛\n\n"
+        f"¡Hoy es tu día! En la Clínica Dra. Dennisse Arroyo te recordamos que es "
+        f"el momento de tu sesión de {tratamiento}.\n\n"
+        f"Agenda ahora y sigue invirtiendo en ti. Mereces seguir viéndote y "
+        f"sintiéndote increíble.\n\n"
+        f"Escríbenos y te atendemos hoy mismo 💛\n\n"
         f"Responde STOP para dejar de recibir recordatorios."
     )
     return {

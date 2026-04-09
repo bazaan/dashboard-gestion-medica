@@ -24,11 +24,11 @@ const PLANTILLAS = [
     boton: BOTON_QR,
     texto: `Hola {{nombre}} 😊
 
-Desde la *Clínica Dra. Dennisse Arroyo* queremos recordarte que tu tratamiento de *{{tratamiento}}* vencerá en 30 días, el {{fecha}}.
+En la *Clínica Dra. Dennisse Arroyo* nos encanta acompañarte en cada etapa de tu tratamiento.
 
-Renovar a tiempo es la clave para mantener los resultados que lograste. ¿Agendamos tu próxima sesión?
+En 30 días será el momento ideal para tu próxima sesión de *{{tratamiento}}*. Agendarlo con anticipación te asegura el horario que más te acomoda.
 
-Escríbenos cuando gustes 🌟
+¿Cuándo te viene bien? Con gusto te reservamos 🌟
 
 _Responde STOP para dejar de recibir recordatorios._`,
   },
@@ -43,11 +43,11 @@ _Responde STOP para dejar de recibir recordatorios._`,
     boton: BOTON_QR,
     texto: `Hola {{nombre}} 💫
 
-Te recordamos de la *Clínica Dra. Dennisse Arroyo* que tu tratamiento de *{{tratamiento}}* vence en solo 7 días, el {{fecha}}.
+Es el momento perfecto para agendar tu próxima sesión de *{{tratamiento}}* en la *Clínica Dra. Dennisse Arroyo*.
 
-Es el momento ideal para renovar y seguir luciendo los resultados que tanto te gustan. ¡Tenemos disponibilidad esta semana!
+Quedan pocos días para aprovechar la disponibilidad que tenemos esta semana. ¿Te agendamos?
 
-Escríbenos y te atendemos con gusto 🌸
+Escríbenos y con gusto te atendemos 🌟
 
 _Responde STOP para dejar de recibir recordatorios._`,
   },
@@ -62,11 +62,11 @@ _Responde STOP para dejar de recibir recordatorios._`,
     boton: BOTON_QR,
     texto: `Hola {{nombre}} ✨
 
-Te contactamos de la *Clínica Dra. Dennisse Arroyo*. Tu tratamiento de *{{tratamiento}}* llegó a su fecha de renovación el {{fecha}}.
+¡Hoy es tu día! En la *Clínica Dra. Dennisse Arroyo* te recordamos que es el momento de tu sesión de *{{tratamiento}}*.
 
-¡Aún estás a tiempo de mantener tus resultados! Renovarlo ahora evita que los efectos disminuyan.
+Agenda ahora y sigue invirtiendo en ti. Mereces seguir viéndote y sintiéndote increíble.
 
-Escríbenos y con gusto te agendamos 💛
+Escríbenos y te atendemos hoy mismo 💛
 
 _Responde STOP para dejar de recibir recordatorios._`,
   },
