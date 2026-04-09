@@ -1,28 +1,31 @@
 "use client";
 
-import { useState, use, useEffect, useCallback } from "react";
+import { useState, use, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import {
   ArrowLeft, User, Phone, MapPin, Stethoscope, Camera,
   CalendarDays, BadgeCheck, Mail, ChevronRight, Loader2,
-  Plus, AlertCircle,
+  Plus, AlertCircle, Lock, Clock,
 } from "lucide-react";
 import { FotosTimeline } from "@/components/pacientes/FotosTimeline";
 import { HistoriaClinicaTab } from "@/components/pacientes/HistoriaClinicaTab";
 import { NuevaConsultaDrawer } from "@/components/pacientes/NuevaConsultaDrawer";
-import { SolicitarAccesoPanel } from "@/components/pacientes/SolicitarAccesoPanel";
 import { usePaciente, calcularEdad, getInitials } from "@/lib/hooks/usePacientes";
 import { useHistoriaClinica } from "@/lib/hooks/useConsultas";
-import { usePermisoActivo } from "@/lib/hooks/usePermisosAcceso";
+import {
+  usePermisoActivo,
+  useSolicitudPendiente,
+  useSolicitarAcceso,
+} from "@/lib/hooks/usePermisosAcceso";
 import { createClient } from "@/lib/supabase/client";
-import type { UserRole } from "@/types/database.types";
+import type { Paciente, UserRole } from "@/types/database.types";
 
 const TABS = [
-  { id: "fotos",   label: "Fotos & Evolución",  icon: Camera      },
-  { id: "historia",label: "Historia Clínica",    icon: Stethoscope },
-  { id: "info",    label: "Información",          icon: User        },
-  { id: "citas",   label: "Citas",               icon: CalendarDays},
+  { id: "fotos",    label: "Fotos & Evolución", icon: Camera       },
+  { id: "historia", label: "Historia Clínica",   icon: Stethoscope  },
+  { id: "info",     label: "Información",         icon: User         },
+  { id: "citas",    label: "Citas",               icon: CalendarDays },
 ];
 
 const ESTADO_CONFIG: Record<string, { label: string; class: string }> = {
@@ -44,30 +47,113 @@ function InfoRow({ label, value, icon: Icon }: { label: string; value?: string |
   );
 }
 
+// ── Teléfono con protección para recepcion ────────────────────
+// - Doctor/admin: siempre visible
+// - Recepcion con permiso aprobado: visible
+// - Recepcion con solicitud pendiente: muestra estado de espera
+// - Recepcion sin solicitud: muestra enmascarado + botón "Solicitar ver"
+function PhoneDisplay({
+  paciente,
+  canSeePhone,
+  className = "",
+}: {
+  paciente: Paciente;
+  canSeePhone: boolean;
+  className?: string;
+}) {
+  const queryClient = useQueryClient();
+  const { data: permisoActivo }    = usePermisoActivo(paciente.id, !canSeePhone);
+  const { data: pendiente }        = useSolicitudPendiente(canSeePhone ? "" : paciente.id);
+  const { mutate: solicitar, isPending: solicitando } = useSolicitarAcceso();
+
+  // Realtime: detectar aprobación/rechazo al instante
+  useEffect(() => {
+    if (canSeePhone) return;
+    const supabase = createClient();
+    const channel = supabase
+      .channel(`phone-permiso-${paciente.id}`)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "permisos_acceso", filter: `paciente_id=eq.${paciente.id}` },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ["permiso-activo",   paciente.id] });
+          queryClient.invalidateQueries({ queryKey: ["permiso-pendiente", paciente.id] });
+        }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [paciente.id, canSeePhone, queryClient]);
+
+  if (!paciente.telefono) return null;
+
+  // Puede ver el teléfono
+  if (canSeePhone || permisoActivo) {
+    return (
+      <a
+        href={`tel:${paciente.telefono}`}
+        className={`flex items-center gap-1.5 text-sm text-muted-foreground hover:text-primary transition-colors ${className}`}
+      >
+        <Phone className="w-3.5 h-3.5" />
+        {paciente.telefono}
+      </a>
+    );
+  }
+
+  // Solicitud pendiente
+  if (pendiente) {
+    return (
+      <span className={`flex items-center gap-1.5 text-sm text-amber-600/80 ${className}`}>
+        <Clock className="w-3.5 h-3.5 animate-pulse" />
+        Esperando aprobación de la Dra.
+      </span>
+    );
+  }
+
+  // Sin solicitud — mostrar enmascarado + botón
+  return (
+    <button
+      onClick={() => solicitar({ pacienteId: paciente.id, pacienteNombre: `${paciente.nombres} ${paciente.apellidos}` })}
+      disabled={solicitando}
+      className={`flex items-center gap-2 group ${className}`}
+    >
+      <Lock className="w-3.5 h-3.5 text-muted-foreground/35 group-hover:text-primary transition-colors shrink-0" />
+      <span className="font-mono tracking-widest text-muted-foreground/25 text-sm">••••••••</span>
+      <span className="text-xs text-primary/60 underline underline-offset-2 group-hover:text-primary transition-colors ml-0.5">
+        {solicitando ? "Enviando…" : "Solicitar ver"}
+      </span>
+    </button>
+  );
+}
+
+// ── Fila de info para el teléfono (variante del InfoRow) ──────
+function PhoneInfoRow({
+  paciente,
+  canSeePhone,
+}: {
+  paciente: Paciente;
+  canSeePhone: boolean;
+}) {
+  return (
+    <div className="flex items-start gap-3 py-3 border-b border-border/50">
+      <Phone className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+      <div className="flex-1 min-w-0">
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Teléfono</p>
+        <PhoneDisplay paciente={paciente} canSeePhone={canSeePhone} />
+      </div>
+    </div>
+  );
+}
+
+// ── Página principal ──────────────────────────────────────────
 export default function PacientePerfilPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const [activeTab, setActiveTab]                   = useState("fotos");
   const [consultaDrawerOpen, setConsultaDrawerOpen] = useState(false);
   const [userRole, setUserRole]                     = useState<UserRole | null>(null);
-  const [accesoDesbloqueado, setAccesoDesbloqueado] = useState(false);
-  const queryClient = useQueryClient();
 
   const { data: paciente, isLoading, error } = usePaciente(id);
-  const { data: permisoActivo, isLoading: checkingPermiso } = usePermisoActivo(
-    id,
-    userRole === "recepcion"
-  );
+  const { data: historia } = useHistoriaClinica(id, true);
 
-  // Solo cargar datos médicos si es admin/doctor, o si recepcion ya tiene permiso
-  const puedeVerExpediente =
-    userRole === "admin" ||
-    userRole === "doctor" ||
-    !!permisoActivo ||
-    accesoDesbloqueado;
-
-  const { data: historia } = useHistoriaClinica(id, puedeVerExpediente);
-
-  // Cargar rol del usuario actual
   useEffect(() => {
     const supabase = createClient();
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -84,45 +170,15 @@ export default function PacientePerfilPage({ params }: { params: Promise<{ id: s
     });
   }, []);
 
-  const handleAccesoAprobado = useCallback(() => {
-    // Invalidar queries médicos para que se refetchen con el permiso ya aprobado
-    queryClient.invalidateQueries({ queryKey: ["historia", id] });
-    queryClient.invalidateQueries({ queryKey: ["consultas", id] });
-    queryClient.invalidateQueries({ queryKey: ["fotos", id] });
-    setAccesoDesbloqueado(true);
-  }, [id, queryClient]);
+  const canSeePhone = userRole === "admin" || userRole === "doctor";
 
-  if (isLoading || userRole === null || (userRole === "recepcion" && checkingPermiso)) {
+  if (isLoading || userRole === null) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="flex flex-col items-center gap-3 text-muted-foreground">
           <Loader2 className="w-8 h-8 animate-spin text-primary" />
           <p className="text-sm">Cargando perfil del paciente…</p>
         </div>
-      </div>
-    );
-  }
-
-  // Recepcion sin permiso aprobado → mostrar panel de solicitud
-  if (
-    paciente &&
-    userRole === "recepcion" &&
-    !permisoActivo &&
-    !accesoDesbloqueado
-  ) {
-    return (
-      <div className="min-h-full bg-background">
-        <header className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b border-border">
-          <div className="flex items-center gap-3 px-4 md:px-8 h-14 md:h-16">
-            <Link href="/pacientes" className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground">
-              <ArrowLeft className="w-4 h-4" />
-            </Link>
-            <span className="font-serif text-sm md:text-base font-semibold text-foreground">
-              {paciente.nombres} {paciente.apellidos}
-            </span>
-          </div>
-        </header>
-        <SolicitarAccesoPanel paciente={paciente} onAccesoAprobado={handleAccesoAprobado} />
       </div>
     );
   }
@@ -145,8 +201,8 @@ export default function PacientePerfilPage({ params }: { params: Promise<{ id: s
   }
 
   const estadoConfig = ESTADO_CONFIG[paciente.estado] ?? ESTADO_CONFIG.activo;
-  const edad    = calcularEdad(paciente.fecha_nacimiento);
-  const initials = getInitials(paciente.nombres, paciente.apellidos);
+  const edad         = calcularEdad(paciente.fecha_nacimiento);
+  const initials     = getInitials(paciente.nombres, paciente.apellidos);
 
   return (
     <div className="min-h-full bg-background">
@@ -226,9 +282,7 @@ export default function PacientePerfilPage({ params }: { params: Promise<{ id: s
                     </span>
                   </div>
                   <div className="flex items-center gap-4 mt-2 flex-wrap">
-                    <a href={`tel:${paciente.telefono}`} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-primary transition-colors">
-                      <Phone className="w-3.5 h-3.5" />{paciente.telefono}
-                    </a>
+                    <PhoneDisplay paciente={paciente} canSeePhone={canSeePhone} />
                     {paciente.email && (
                       <a href={`mailto:${paciente.email}`} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-primary transition-colors">
                         <Mail className="w-3.5 h-3.5" />{paciente.email}
@@ -281,7 +335,6 @@ export default function PacientePerfilPage({ params }: { params: Promise<{ id: s
         {/* Contenido del tab */}
         <div className="fade-up stagger-1">
 
-          {/* TAB: FOTOS */}
           {activeTab === "fotos" && (
             <FotosTimeline
               pacienteId={id}
@@ -289,7 +342,6 @@ export default function PacientePerfilPage({ params }: { params: Promise<{ id: s
             />
           )}
 
-          {/* TAB: HISTORIA CLÍNICA */}
           {activeTab === "historia" && (
             <HistoriaClinicaTab
               pacienteId={id}
@@ -297,7 +349,6 @@ export default function PacientePerfilPage({ params }: { params: Promise<{ id: s
             />
           )}
 
-          {/* TAB: INFORMACIÓN */}
           {activeTab === "info" && (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <div className="card-premium p-6">
@@ -316,7 +367,7 @@ export default function PacientePerfilPage({ params }: { params: Promise<{ id: s
               </div>
               <div className="card-premium p-6">
                 <p className="label-elegant mb-4">Contacto & Ubicación</p>
-                <InfoRow label="Teléfono" value={paciente.telefono} icon={Phone} />
+                <PhoneInfoRow paciente={paciente} canSeePhone={canSeePhone} />
                 <InfoRow label="Teléfono Alt." value={paciente.telefono_alt} icon={Phone} />
                 <InfoRow label="Email" value={paciente.email} icon={Mail} />
                 <InfoRow label="Dirección" value={paciente.direccion} icon={MapPin} />
@@ -334,7 +385,6 @@ export default function PacientePerfilPage({ params }: { params: Promise<{ id: s
             </div>
           )}
 
-          {/* TAB: CITAS */}
           {activeTab === "citas" && (
             <div className="card-premium p-16 text-center">
               <div className="w-14 h-14 rounded-full bg-primary/8 border border-primary/15 flex items-center justify-center mx-auto mb-4">
