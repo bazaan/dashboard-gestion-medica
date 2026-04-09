@@ -72,51 +72,53 @@ function NavContent({
         <div className="mt-5 gold-rule" />
       </div>
 
-      {/* Nav */}
-      <nav className="flex-1 px-4 py-2 space-y-0.5">
-        <p className="label-elegant text-white/25 px-3 mb-3">Navegación</p>
-        {visibleLinks.map((link) => {
-          const isActive = link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
-          const Icon = link.icon;
-          return (
-            <Link
-              key={link.href}
-              href={link.href}
-              onClick={onClose}
-              className={`relative flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 font-medium text-sm group ${
-                isActive ? "bg-primary/20 text-white" : "text-white/55 hover:bg-white/6 hover:text-white/90"
-              }`}
-            >
-              {isActive && (
-                <motion.div
-                  layoutId="sidebar-active"
-                  className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-primary rounded-full"
-                  transition={{ type: "spring", stiffness: 400, damping: 30 }}
-                />
-              )}
-              <div className="relative shrink-0">
-                <Icon className={`w-4.5 h-4.5 transition-colors ${isActive ? "text-primary" : "text-white/40 group-hover:text-white/70"}`} />
-                {link.href === "/renovaciones" && urgentCount > 0 && (
-                  <span className="absolute -top-1 -right-1.5 min-w-[14px] h-3.5 px-0.5 rounded-full bg-red-500 text-white text-[8px] font-bold flex items-center justify-center leading-none">
-                    {urgentCount > 9 ? "9+" : urgentCount}
-                  </span>
+      {/* Scrollable middle: nav + notifications */}
+      <div className="flex-1 min-h-0 overflow-y-auto flex flex-col">
+        <nav className="px-4 py-2 space-y-0.5">
+          <p className="label-elegant text-white/25 px-3 mb-3">Navegación</p>
+          {visibleLinks.map((link) => {
+            const isActive = link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
+            const Icon = link.icon;
+            return (
+              <Link
+                key={link.href}
+                href={link.href}
+                onClick={onClose}
+                className={`relative flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 font-medium text-sm group ${
+                  isActive ? "bg-primary/20 text-white" : "text-white/55 hover:bg-white/6 hover:text-white/90"
+                }`}
+              >
+                {isActive && (
+                  <motion.div
+                    layoutId="sidebar-active"
+                    className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-primary rounded-full"
+                    transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                  />
                 )}
-              </div>
-              <span className="flex-1">{
-                link.name === "Panel" ? "Panel de Control" :
-                link.name === "Config" ? "Configuración" :
-                link.name
-              }</span>
-              {isActive && <ChevronRight className="w-3.5 h-3.5 text-primary/60" />}
-            </Link>
-          );
-        })}
-      </nav>
+                <div className="relative shrink-0">
+                  <Icon className={`w-4.5 h-4.5 transition-colors ${isActive ? "text-primary" : "text-white/40 group-hover:text-white/70"}`} />
+                  {link.href === "/renovaciones" && urgentCount > 0 && (
+                    <span className="absolute -top-1 -right-1.5 min-w-[14px] h-3.5 px-0.5 rounded-full bg-red-500 text-white text-[8px] font-bold flex items-center justify-center leading-none">
+                      {urgentCount > 9 ? "9+" : urgentCount}
+                    </span>
+                  )}
+                </div>
+                <span className="flex-1">{
+                  link.name === "Panel" ? "Panel de Control" :
+                  link.name === "Config" ? "Configuración" :
+                  link.name
+                }</span>
+                {isActive && <ChevronRight className="w-3.5 h-3.5 text-primary/60" />}
+              </Link>
+            );
+          })}
+        </nav>
 
-      {/* Notificaciones de acceso — solo para admin/doctor */}
-      {(profile.role === "admin" || profile.role === "doctor") && (
-        <NotificacionesPermiso />
-      )}
+        {/* Notificaciones de acceso — solo para admin/doctor */}
+        {(profile.role === "admin" || profile.role === "doctor") && (
+          <NotificacionesPermiso />
+        )}
+      </div>
 
       {/* Footer — user card */}
       <div className="px-4 pb-6 pt-4 space-y-4">
@@ -245,7 +247,7 @@ export function Sidebar({ profile }: { profile: Profile }) {
               onClick={() => setMobileOpen(false)}
             />
             <motion.aside
-              className="fixed top-0 left-0 bottom-0 z-[70] w-72 bg-secondary flex flex-col md:hidden relative overflow-y-auto"
+              className="fixed top-0 left-0 bottom-0 z-[70] w-72 bg-secondary flex flex-col md:hidden relative overflow-hidden"
               initial={{ x: "-100%" }} animate={{ x: 0 }} exit={{ x: "-100%" }}
               transition={{ type: "spring", damping: 28, stiffness: 300 }}
             >
