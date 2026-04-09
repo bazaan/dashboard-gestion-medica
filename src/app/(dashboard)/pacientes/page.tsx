@@ -3,11 +3,12 @@
 import {
   Search, Plus, SlidersHorizontal, MoreHorizontal, Users,
   ChevronLeft, ChevronRight, ArrowUpDown, Eye, Pencil, Trash2,
-  Phone, Loader2, UserCheck, UserX, Star,
+  Phone, Loader2, UserCheck, UserX, Star, Lock,
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { NuevoPacienteDrawer } from "@/components/pacientes/NuevoPacienteDrawer";
 import { usePacientes, useEliminarPaciente, useActualizarEstadoPaciente, getInitials } from "@/lib/hooks/usePacientes";
 import { createClient } from "@/lib/supabase/client";
@@ -23,6 +24,17 @@ const ESTADO_LABEL: Record<string, string> = {
 };
 
 const PAGE_SIZE = 20;
+
+const MASKED = (
+  <span className="font-mono text-muted-foreground/30 tracking-widest select-none">••••••••</span>
+);
+
+function toastSinPermiso() {
+  toast.error("Sin acceso", {
+    description: "Solo la Dra. Dennisse puede ver o editar datos sensibles de pacientes.",
+    duration: 4000,
+  });
+}
 
 // ── Menú contextual de tres puntos ───────────────────────────
 function AccionesMenu({
@@ -63,12 +75,20 @@ function AccionesMenu({
           className="absolute right-0 top-8 z-50 w-48 bg-background border border-border rounded-xl shadow-lg py-1 animate-in fade-in slide-in-from-top-1 duration-150"
           onClick={(e) => e.stopPropagation()}
         >
-          {canEdit && (
+          {canEdit ? (
             <button
               onClick={() => { onEdit(); setOpen(false); }}
               className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-foreground hover:bg-muted transition-colors text-left"
             >
               <Pencil className="w-3.5 h-3.5 text-muted-foreground" />
+              Editar datos
+            </button>
+          ) : (
+            <button
+              onClick={() => { toastSinPermiso(); setOpen(false); }}
+              className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-muted-foreground/50 hover:bg-muted transition-colors text-left"
+            >
+              <Lock className="w-3.5 h-3.5" />
               Editar datos
             </button>
           )}
@@ -103,15 +123,18 @@ function AccionesMenu({
             </button>
           )}
 
-          <div className="my-1 border-t border-border/60" />
-
-          <button
-            onClick={() => { onDelete(); setOpen(false); }}
-            className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors text-left"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-            Eliminar paciente
-          </button>
+          {canEdit && (
+            <>
+              <div className="my-1 border-t border-border/60" />
+              <button
+                onClick={() => { onDelete(); setOpen(false); }}
+                className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors text-left"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Eliminar paciente
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>
@@ -190,7 +213,9 @@ export default function PacientesPage() {
     });
   }, []);
 
-  const canEdit = userRole === "admin" || userRole === "doctor";
+  const canEdit    = userRole === "admin" || userRole === "doctor";
+  // Solo doctor/admin ven DNI y teléfono reales
+  const canSeeData = userRole === "admin" || userRole === "doctor";
 
   const { data: pacientes = [], isLoading, error } = usePacientes(search);
   const { mutate: eliminar, isPending: eliminando } = useEliminarPaciente();
@@ -200,6 +225,7 @@ export default function PacientesPage() {
   const totalPages = Math.max(1, Math.ceil(pacientes.length / PAGE_SIZE));
 
   function handleEdit(p: Paciente) {
+    if (!canEdit) { toastSinPermiso(); return; }
     setEditPaciente(p);
     setDrawerOpen(true);
   }
@@ -240,11 +266,13 @@ export default function PacientesPage() {
               Gestión de Pacientes
             </span>
           </div>
-          <button onClick={() => setDrawerOpen(true)} className="btn-primary text-sm">
-            <Plus className="w-4 h-4" />
-            <span className="hidden sm:inline">Nuevo Paciente</span>
-            <span className="sm:hidden">Nuevo</span>
-          </button>
+          {canEdit && (
+            <button onClick={() => setDrawerOpen(true)} className="btn-primary text-sm">
+              <Plus className="w-4 h-4" />
+              <span className="hidden sm:inline">Nuevo Paciente</span>
+              <span className="sm:hidden">Nuevo</span>
+            </button>
+          )}
         </div>
       </header>
 
@@ -262,6 +290,16 @@ export default function PacientesPage() {
           <div className="gold-rule mt-4" />
         </div>
 
+        {/* Aviso de datos protegidos para recepción */}
+        {!canSeeData && (
+          <div className="fade-up stagger-1 flex items-center gap-3 px-4 py-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800">
+            <Lock className="w-4 h-4 shrink-0 text-amber-500" />
+            <p className="text-xs font-medium">
+              Los datos de contacto (DNI y teléfono) están protegidos. Solo la Dra. Dennisse puede verlos y editarlos.
+            </p>
+          </div>
+        )}
+
         <div className="card-premium fade-up stagger-1">
           {/* Búsqueda */}
           <div className="px-4 md:px-6 py-3.5 md:py-4 border-b border-border flex gap-3 items-center">
@@ -271,7 +309,7 @@ export default function PacientesPage() {
                 type="text"
                 value={search}
                 onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-                placeholder="Buscar por nombre, apellido o DNI…"
+                placeholder={canSeeData ? "Buscar por nombre, apellido o DNI…" : "Buscar por nombre o apellido…"}
                 className="input-premium pl-10"
               />
             </div>
@@ -300,7 +338,7 @@ export default function PacientesPage() {
               <p className="text-sm text-muted-foreground">
                 {search ? `No se encontraron pacientes con "${search}"` : "Aún no hay pacientes registrados"}
               </p>
-              {!search && (
+              {!search && canEdit && (
                 <button onClick={() => setDrawerOpen(true)} className="btn-primary text-sm mt-4 mx-auto">
                   <Plus className="w-4 h-4" /> Registrar primer paciente
                 </button>
@@ -331,10 +369,19 @@ export default function PacientesPage() {
                           </span>
                         </div>
                         <div className="flex items-center gap-3 mt-0.5">
-                          <span className="text-[10px] text-muted-foreground font-mono">{p.dni}</span>
-                          <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground">
-                            <Phone className="w-2.5 h-2.5" />{p.telefono}
-                          </span>
+                          {canSeeData ? (
+                            <>
+                              <span className="text-[10px] text-muted-foreground font-mono">{p.dni}</span>
+                              <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground">
+                                <Phone className="w-2.5 h-2.5" />{p.telefono}
+                              </span>
+                            </>
+                          ) : (
+                            <span className="flex items-center gap-1 text-[10px] text-muted-foreground/40">
+                              <Lock className="w-2.5 h-2.5" />
+                              Datos protegidos
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -387,10 +434,14 @@ export default function PacientesPage() {
                           </div>
                         </td>
                         <td className="px-6 py-4">
-                          <span className="font-mono text-sm text-foreground/80">{p.dni}</span>
+                          {canSeeData
+                            ? <span className="font-mono text-sm text-foreground/80">{p.dni}</span>
+                            : MASKED}
                         </td>
                         <td className="px-6 py-4 hidden lg:table-cell">
-                          <span className="text-sm text-muted-foreground">{p.telefono}</span>
+                          {canSeeData
+                            ? <span className="text-sm text-muted-foreground">{p.telefono}</span>
+                            : MASKED}
                         </td>
                         <td className="px-6 py-4 hidden lg:table-cell">
                           <span className="text-sm text-muted-foreground">
@@ -412,7 +463,7 @@ export default function PacientesPage() {
                             >
                               <Eye className="w-4 h-4" />
                             </Link>
-                            {canEdit && (
+                            {canEdit ? (
                               <button
                                 onClick={(e) => { e.stopPropagation(); handleEdit(p); }}
                                 className="p-1.5 rounded-lg hover:bg-primary/10 text-muted-foreground hover:text-primary transition-all"
@@ -420,12 +471,21 @@ export default function PacientesPage() {
                               >
                                 <Pencil className="w-4 h-4" />
                               </button>
+                            ) : (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); toastSinPermiso(); }}
+                                className="p-1.5 rounded-lg text-muted-foreground/30 cursor-not-allowed"
+                                title="Sin acceso para editar"
+                              >
+                                <Lock className="w-4 h-4" />
+                              </button>
                             )}
                             <AccionesMenu
                               paciente={p}
                               onEdit={() => handleEdit(p)}
                               onDelete={() => setDeletePaciente(p)}
                               onEstado={(estado) => cambiarEstado({ id: p.id, estado })}
+                              canEdit={canEdit}
                             />
                           </div>
                         </td>
