@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useDropzone } from "react-dropzone";
 import { format } from "date-fns";
@@ -11,12 +11,15 @@ import {
   Stethoscope, Loader2, Lock, File as FileIcon,
   Edit3, Eye, Download, Syringe, ClipboardList,
   Pill, MessageSquare, CalendarClock, CheckCheck, Calendar,
-  Pencil, Save, X, Check, Clock,
+  Pencil, Save, X, Check, Clock, Printer,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
+import { createPortal } from "react-dom";
 import type { HistoriaClinica, EvolucionClinica, Tratamiento } from "@/types/database.types";
 import { CATEGORIA_LABELS, type TratamientoCategoria } from "@/types/database.types";
+import { PrintHistoriaClinica } from "./PrintHistoriaClinica";
+import { usePaciente } from "@/lib/hooks/usePacientes";
 import {
   TIPO_PIEL_LABELS, FITZPATRICK_LABELS,
   HistoriaFormState, FORM_EMPTY, historiaToForm, formToDbPayload,
@@ -1002,6 +1005,12 @@ export function HistoriaClinicaTab({ pacienteId, pacienteNombre }: Props) {
   const queryClient = useQueryClient();
   const { data: historia, isLoading: loadingHistoria } = useHistoria(pacienteId);
   const { data: evoluciones = [], isLoading: loadingEvoluciones } = useEvoluciones(historia?.id ?? null);
+  const { data: paciente } = usePaciente(pacienteId);
+  const printRef = useRef<HTMLDivElement>(null);
+
+  function handlePrint() {
+    window.print();
+  }
 
   if (loadingHistoria) {
     return (
@@ -1025,6 +1034,19 @@ export function HistoriaClinicaTab({ pacienteId, pacienteNombre }: Props) {
 
   return (
     <div className="space-y-6">
+      {/* Print portal — rendered in body for @media print */}
+      {paciente && typeof document !== "undefined" && createPortal(
+        <div className="print-overlay">
+          <PrintHistoriaClinica
+            ref={printRef}
+            paciente={paciente}
+            historia={historia}
+            evoluciones={evoluciones}
+          />
+        </div>,
+        document.body
+      )}
+
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <p className="label-elegant mb-1">Historia Clínica</p>
@@ -1032,6 +1054,12 @@ export function HistoriaClinicaTab({ pacienteId, pacienteNombre }: Props) {
           <p className="text-sm text-muted-foreground mt-0.5 font-mono">{historia.numero}</p>
         </div>
         <div className="flex items-center gap-3 text-sm text-muted-foreground">
+          <button
+            onClick={handlePrint}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border hover:border-primary/40 hover:bg-primary/5 text-muted-foreground hover:text-primary transition-all text-xs font-medium"
+          >
+            <Printer className="w-3.5 h-3.5" /> Imprimir
+          </button>
           <span><strong className="text-foreground">{evoluciones.length}</strong> sesión{evoluciones.length !== 1 ? "es" : ""}</span>
           {evoluciones.length > 0 && (
             <>

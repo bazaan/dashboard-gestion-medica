@@ -176,7 +176,7 @@ def _create_conversation_with_template(
             "content": message["content"],
             "template_params": {
                 "name": message["template_name"],
-                "category": "UTILITY",
+                "category": "MARKETING",
                 "language": message["template_language"],
                 "processed_params": message["params"],
             },
