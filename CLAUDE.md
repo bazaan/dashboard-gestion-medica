@@ -66,7 +66,7 @@ El root layout (`src/app/layout.tsx`) sólo inyecta fuentes, `<QueryProvider>` y
 - `/renovaciones` — Tab "Seguimientos" + tab "Recordatorios WA" con log de envíos
 - `/procedimientos` — Catálogo de tratamientos (solo admin/doctor)
 - `/plantillas` — Plantillas de WhatsApp con preview interactivo (solo admin/doctor)
-- `/configuracion` — Config del sistema (solo admin, página vacía)
+- `/configuracion` — Config del sistema (solo admin): gestión usuarios, datos clínica, recordatorios WA, permisos, audit log
 
 ## Supabase
 
@@ -288,14 +288,48 @@ Los tokens de Tailwind se definen en `globals.css` y se usan directamente como c
 - **`next.config.ts`**: Usa `__dirname` para aislar el Turbopack root y evitar compilaciones en directorios padre. Define `basePath: "/staff"` — todas las rutas en producción (Netlify) van bajo `/staff/*`. En desarrollo con `-p 3005` el `basePath` sigue activo, por lo que las URLs locales también usan `/staff/`.
 - **`netlify.toml`**: Configuración de deploy. El sitio se despliega en Netlify apuntando a la rama `main`.
 
+## Webhook Bot (`reminders-service/webhook.py`)
+
+Bot automático que responde cuando un paciente hace clic en el botón Quick Reply de los templates de recordatorio.
+
+**Flujo:**
+1. Paciente recibe template de recordatorio (ej. `renovacion_vencimiento`)
+2. Hace clic en "Quiero agendar mi cita"
+3. Chatwoot envía webhook → `POST /webhook/chatwoot`
+4. Bot detecta el mensaje y responde con link directo al WhatsApp de la clínica (+51 961 847 489)
+5. Mensaje pre-armado: *"Soy [nombre], vi el recordatorio y me gustaría agendar mi próxima cita"*
+
+**Arquitectura:** FastAPI + uvicorn corre en el mismo proceso que APScheduler. Puerto 8080.
+
+**Triggers** (textos que activan la respuesta):
+- "Quiero agendar mi cita" (botón QR)
+- "¡Agendemos! 📅"
+- "Agendemos"
+
+**Endpoints:**
+- `POST /webhook/chatwoot` — recibe eventos de Chatwoot
+- `GET /health` — healthcheck para Railway
+
+**Variables de entorno adicionales:**
+- `CLINICA_WA_NUMBER` — número de la clínica (default: `51961847489`)
+- `PORT` — puerto del server (default: `8080`)
+
+**Estado:** Código listo. Pendiente:
+1. Esperar aprobación de templates en Meta
+2. Deploy a Railway
+3. Configurar webhook en Chatwoot account 4 → `https://<url-railway>/webhook/chatwoot`
+
 ## Roadmap (Próximos Pasos)
 
-1. **Resolver entrega de templates MARKETING** — Opción A: verificar `+51 936 196 001` con OTP vía Meta API (`POST /{phone_number_id}/request_code`). Opción B: re-someter `0d`, `7d`, `30d` como UTILITY en Meta Business Manager (1-2 días aprobación).
-2. **Deploy reminders-service a Railway** — copiar variables de `reminders-service/.env` al proyecto Railway
-3. ~~**Deploy dashboard a Netlify**~~ — ✅ conectado a rama `main`, deploy automático en cada push
-4. ~~**CRUD Pacientes completo**~~ — ✅ implementado (edición y eliminación en `NuevoPacienteDrawer`)
-5. **Middleware de autenticación** — activar `src/proxy.ts` renombrándolo a `src/middleware.ts`
-6. ~~**Sistema de permisos de acceso a pacientes**~~ — ✅ implementado (migration_v10 + `usePermisosAcceso` + `SolicitarAccesoPanel` + `NotificacionesPermiso`)
-7. **Contrato de confidencialidad** — la Dra. requiere un acuerdo firmado por cada colaborador que acceda al sistema. Prompt generado para producirlo via claude.ai (Ley N° 29733 Perú). Pendiente imprimir y firmar con cada miembro del equipo.
+1. ~~**Resolver entrega de templates MARKETING**~~ — ✅ Templates re-sometidos como `renovacion_recordatorio_30d`, `renovacion_recordatorio_7d`, `renovacion_vencimiento` en cuenta real (account 4, inbox 65, +51 981 452 802). Pendiente aprobación de Meta.
+2. **Deploy reminders-service a Railway** — copiar variables actualizadas (CHATWOOT_ACCOUNT_ID=4, CHATWOOT_WA_INBOX_ID=65, templates nuevos, CLINICA_WA_NUMBER)
+3. **Activar webhook en Chatwoot** — configurar URL del webhook en account 4 apuntando al servicio en Railway
+4. ~~**Deploy dashboard a Netlify**~~ — ✅ conectado a rama `main`, deploy automático en cada push
+5. ~~**CRUD Pacientes completo**~~ — ✅ implementado (edición y eliminación en `NuevoPacienteDrawer`)
+6. **Middleware de autenticación** — activar `src/proxy.ts` renombrándolo a `src/middleware.ts`
+7. ~~**Sistema de permisos de acceso a pacientes**~~ — ✅ implementado (migration_v10 + `usePermisosAcceso` + `SolicitarAccesoPanel` + `NotificacionesPermiso`)
+8. ~~**Página de configuración**~~ — ✅ implementada (gestión usuarios, datos clínica, WA status, permisos, audit log)
+9. ~~**Impresión de historia clínica**~~ — ✅ botón "Imprimir" en tab Historia Clínica, genera PDF con datos del paciente + historia base + todas las evoluciones
+10. **Contrato de confidencialidad** — la Dra. requiere un acuerdo firmado por cada colaborador que acceda al sistema. Pendiente imprimir y firmar.
 
 > Ver `PROYECTO.md` para la bitácora completa, arquitectura del sistema y notas técnicas detalladas.
