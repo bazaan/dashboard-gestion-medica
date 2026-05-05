@@ -124,13 +124,8 @@ def handle_webhook(payload: dict) -> dict:
 
     reply = (
         f"{saludo} 😊\n\n"
-        f"¡Qué bueno que quieras agendar tu cita! Para darte la mejor atención "
-        f"personalizada, te conectamos directamente con nuestro equipo.\n\n"
-        f"👉 *Haz clic aquí para agendar por WhatsApp:*\n"
-        f"{wa_link}\n\n"
-        f"Nuestro horario de atención es de Lunes a Viernes de 9:00 a 18:00.\n"
-        f"¡Te esperamos! 💛\n\n"
-        f"— Clínica Dra. Dennisse Arroyo"
+        f"Para agendar tu cita, escríbenos directamente aquí 👇\n\n"
+        f"{wa_link}"
     )
 
     # Enviar respuesta
