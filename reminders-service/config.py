@@ -77,7 +77,7 @@ class Config:
             chatwoot_account_id=chatwoot_account_id,
             chatwoot_api_token=chatwoot_api_token,
             chatwoot_wa_inbox_id=chatwoot_wa_inbox_id,
-            wa_template_30d=optional("WA_TEMPLATE_30D", "renovacion_final"),
+            wa_template_30d=optional("WA_TEMPLATE_30D", "renovacion_recordatorio_30d"),
             wa_template_7d=optional("WA_TEMPLATE_7D", "renovacion_recordatorio_7d"),
             wa_template_vencimiento=optional("WA_TEMPLATE_VENCIMIENTO", "renovacion_vencimiento"),
             wa_template_30d_language=optional("WA_TEMPLATE_30D_LANGUAGE", "es_PE"),

@@ -183,30 +183,26 @@ Servicio Python independiente desplegado en **Railway**. Corre diariamente a las
 
 | Variable env | Nombre en Meta | Idioma | Categoría | Estado |
 |---|---|---|---|---|
-| `WA_TEMPLATE_30D` | `30d` | `en_US` | MARKETING | Aprobada |
-| `WA_TEMPLATE_7D` | `7d` | `es_PE` | MARKETING | Aprobada |
-| `WA_TEMPLATE_VENCIMIENTO` | `0d` | `es_PE` | MARKETING | Aprobada |
+| `WA_TEMPLATE_30D` | `renovacion_recordatorio_30d` | `es_PE` | MARKETING | Pendiente |
+| `WA_TEMPLATE_7D` | `renovacion_recordatorio_7d` | `es_PE` | MARKETING | Pendiente |
+| `WA_TEMPLATE_VENCIMIENTO` | `renovacion_vencimiento` | `es_PE` | MARKETING | Pendiente |
 
-> **⚠️ Problema activo**: Los 3 templates son categoría MARKETING. El número `+51 936 196 001` está en tier TIER_250 y estado NOT_VERIFIED. Meta bloquea silenciosamente MARKETING a números no verificados con tier bajo. **Solución A**: verificar el número con OTP vía Meta API. **Solución B**: re-someter los 3 templates como categoría UTILITY.
+> **Parámetros**: NAMED → `{{nombre}}` y `{{tratamiento}}` (solo 2, sin fecha). Botón Quick Reply: "Quiero agendar mi cita" (solo en `renovacion_vencimiento`).
 
-**Templates UTILITY confirmados funcionales** (entregan sin restricción de tier/verificación):
-- `citas_healup` — UTILITY, `es`, parámetros POSICIONALES `{{1}}` (fecha) y `{{2}}` (lista citas). **Importante**: `{{2}}` no puede llevar `\n`, separar con `·` o comas.
+> **Estado**: Los 3 templates están PENDING en Meta Business Manager. Cuando sean aprobados, el servicio de recordatorios funcionará automáticamente.
 
-**Otras plantillas en la cuenta** (WABA `1757278298325261`):
-- `mensaje_citas_diarias` — MARKETING, `es`, POSICIONAL, para resumen diario de citas
-
-**Variables de entorno del servicio** (archivo `.env` en `reminders-service/`, replicar en Railway):
+**Variables de entorno del servicio** (configurar en Railway):
 ```
 SUPABASE_URL=https://wnbamzjieowfqcowppxc.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=...
 CHATWOOT_BASE_URL=https://chats.alef.company
-CHATWOOT_ACCOUNT_ID=1
+CHATWOOT_ACCOUNT_ID=4
 CHATWOOT_API_TOKEN=xBsW4FE3FCZdZbgXgdjrHfUA
-CHATWOOT_WA_INBOX_ID=17
-WA_TEMPLATE_30D=30d
-WA_TEMPLATE_7D=7d
-WA_TEMPLATE_VENCIMIENTO=0d
-WA_TEMPLATE_30D_LANGUAGE=en_US
+CHATWOOT_WA_INBOX_ID=65
+WA_TEMPLATE_30D=renovacion_recordatorio_30d
+WA_TEMPLATE_7D=renovacion_recordatorio_7d
+WA_TEMPLATE_VENCIMIENTO=renovacion_vencimiento
+WA_TEMPLATE_30D_LANGUAGE=es_PE
 WA_TEMPLATE_7D_LANGUAGE=es_PE
 WA_TEMPLATE_VENCIMIENTO_LANGUAGE=es_PE
 USE_WA_TEMPLATES=true
@@ -218,35 +214,35 @@ CRON_MINUTE=0
 LOG_LEVEL=INFO
 ```
 
-**Credenciales Chatwoot / Meta** (para llamadas directas a la API):
+**Credenciales Chatwoot / Meta** (canal real — cuenta 4, inbox 65):
 - Chatwoot base URL: `https://chats.alef.company`
 - Chatwoot API token: `xBsW4FE3FCZdZbgXgdjrHfUA`
-- Inbox ID: `17`
-- Meta phone_number_id: `907213675807970`
-- Meta WABA ID: `1757278298325261`
-- Meta system user: `122096410293196402` (Alef Company System User)
-- Meta API token: en `provider_config.api_key` del inbox 17 de Chatwoot
+- Account ID: `4`
+- Inbox ID: `65`
+- Phone: `+51 981 452 802`
+- Meta phone_number_id: `1094201600448250`
+- Meta WABA ID: `3598875606929262`
+- Meta API token: en `provider_config.api_key` del inbox 65 de Chatwoot
 
 **Cómo enviar template vía Chatwoot API** (método confirmado funcional):
 ```bash
-POST https://chats.alef.company/api/v1/accounts/1/conversations
+POST https://chats.alef.company/api/v1/accounts/4/conversations
 {
-  "inbox_id": 17,
+  "inbox_id": 65,
   "contact_id": <id>,
   "message": {
     "content": "texto fallback",
     "template_params": {
-      "name": "nombre_template",
-      "category": "UTILITY",   # o "MARKETING"
-      "language": "es",
-      "processed_params": { "1": "valor1", "2": "valor2" }  # POSICIONAL
-      # Para NAMED: { "nombre": "Juan", "tratamiento": "Hilos" }
+      "name": "renovacion_recordatorio_30d",
+      "category": "MARKETING",
+      "language": "es_PE",
+      "processed_params": { "nombre": "Juan", "tratamiento": "Hilos Delta" }
     }
   }
 }
 ```
 
-> Para templates NAMED (como `0d`, `7d`, `30d`), `processed_params` usa claves con nombre. Para templates POSICIONALES (como `citas_healup`), usa claves `"1"`, `"2"`, etc. **No incluir `buttons`** en `template_params` — Chatwoot lo agrega mal y causa error `#132000`.
+> Los 3 templates de renovación usan params NAMED: `nombre` y `tratamiento`. **No incluir `buttons`** en `template_params` — Chatwoot lo agrega mal y causa error `#132000`.
 
 **Paciente de prueba** (creado para testear el flujo end-to-end):
 - Nombre: Juan Pablo | ID: `0acad5d5-2a7a-4adb-9b5a-13d3749a4a20`

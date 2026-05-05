@@ -231,9 +231,9 @@ function ClinicaSection() {
 // ── 3. Recordatorios WhatsApp ──────────────────────────────────
 function RecordatoriosSection() {
   const templates = [
-    { name: "renovacion_final", tipo: "30 días antes", estado: "Activa", category: "MARKETING" },
-    { name: "renovacion_recordatorio_7d", tipo: "7 días antes", estado: "Activa", category: "MARKETING" },
-    { name: "renovacion_vencimiento", tipo: "Día del vencimiento", estado: "Activa", category: "MARKETING" },
+    { name: "renovacion_recordatorio_30d", tipo: "30 días antes", estado: "Pendiente", category: "MARKETING" },
+    { name: "renovacion_recordatorio_7d", tipo: "7 días antes", estado: "Pendiente", category: "MARKETING" },
+    { name: "renovacion_vencimiento", tipo: "Día del vencimiento", estado: "Pendiente", category: "MARKETING" },
   ];
 
   return (
