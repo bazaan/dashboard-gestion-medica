@@ -4,3 +4,5 @@ APScheduler==3.10.4
 python-dotenv==1.0.1
 tenacity==9.0.0
 phonenumbers==8.13.47
+fastapi==0.115.6
+uvicorn[standard]==0.34.0

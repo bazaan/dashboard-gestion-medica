@@ -24,8 +24,11 @@ COPY --chown=appuser:appuser . .
 
 USER appuser
 
-# Healthcheck básico: verificar que el proceso Python sigue corriendo
-HEALTHCHECK --interval=60s --timeout=10s --start-period=10s --retries=3 \
-  CMD pgrep -f "python main.py" || exit 1
+# Exponer puerto para webhook
+EXPOSE 8080
+
+# Healthcheck via HTTP
+HEALTHCHECK --interval=60s --timeout=10s --start-period=15s --retries=3 \
+  CMD python -c "import httpx; httpx.get('http://localhost:8080/health', timeout=5).raise_for_status()" || exit 1
 
 CMD ["python", "main.py"]
