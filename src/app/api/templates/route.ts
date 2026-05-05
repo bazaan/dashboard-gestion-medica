@@ -1,0 +1,115 @@
+import { NextRequest, NextResponse } from "next/server";
+
+const WABA_ID = "3598875606929262";
+const META_API = `https://graph.facebook.com/v21.0/${WABA_ID}/message_templates`;
+
+// Token stored in Chatwoot inbox 65, account 4 provider_config.api_key
+// In production this should come from env, but for now we fetch it from Chatwoot
+async function getMetaToken(): Promise<string> {
+  const CHATWOOT_TOKEN = "xBsW4FE3FCZdZbgXgdjrHfUA";
+  const res = await fetch("https://chats.alef.company/api/v1/accounts/4/inboxes", {
+    headers: { api_access_token: CHATWOOT_TOKEN },
+  });
+  const data = await res.json();
+  const inboxes = data?.payload ?? data;
+  const inbox = (inboxes as any[]).find((i: any) => i.id === 65);
+  if (!inbox) throw new Error("Inbox 65 not found");
+  return inbox.provider_config?.api_key;
+}
+
+// GET — list all templates from Meta
+export async function GET() {
+  try {
+    const token = await getMetaToken();
+    const res = await fetch(`${META_API}?limit=100`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await res.json();
+    if (data.error) {
+      return NextResponse.json({ error: data.error.message }, { status: 400 });
+    }
+    return NextResponse.json({ templates: data.data ?? [] });
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message }, { status: 500 });
+  }
+}
+
+// POST — create a new template in Meta
+export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json();
+    const { name, language, category, body_text, buttons } = body;
+
+    if (!name || !body_text) {
+      return NextResponse.json({ error: "name and body_text are required" }, { status: 400 });
+    }
+
+    const components: any[] = [
+      {
+        type: "BODY",
+        text: body_text,
+      },
+    ];
+
+    if (buttons && buttons.length > 0) {
+      components.push({
+        type: "BUTTONS",
+        buttons: buttons.map((b: any) => ({
+          type: b.type || "QUICK_REPLY",
+          text: b.text,
+        })),
+      });
+    }
+
+    const payload = {
+      name,
+      language: language || "es_PE",
+      category: category || "MARKETING",
+      components,
+    };
+
+    const token = await getMetaToken();
+    const res = await fetch(META_API, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await res.json();
+    if (data.error) {
+      return NextResponse.json({ error: data.error.message, details: data.error }, { status: 400 });
+    }
+
+    return NextResponse.json({ success: true, template: data });
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message }, { status: 500 });
+  }
+}
+
+// DELETE — delete a template by name
+export async function DELETE(req: NextRequest) {
+  try {
+    const { name } = await req.json();
+    if (!name) {
+      return NextResponse.json({ error: "name is required" }, { status: 400 });
+    }
+
+    const token = await getMetaToken();
+    const res = await fetch(`${META_API}?name=${name}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    const data = await res.json();
+    if (data.error) {
+      return NextResponse.json({ error: data.error.message }, { status: 400 });
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message }, { status: 500 });
+  }
+}

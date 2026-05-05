@@ -1,84 +1,29 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   MessageSquareText, Copy, Check, ChevronDown, ChevronUp,
   Info, Clock, AlertTriangle, CheckCircle2, Smartphone,
+  Plus, Trash2, RefreshCw, Send, Loader2, X,
 } from "lucide-react";
+import { toast } from "sonner";
 
-// ─── Definición canónica de las 3 plantillas ─────────────────────────────────
-// Este es el texto EXACTO que se somete a Meta Business Manager.
-// Sincronizar con reminders-service/templates.py si se modifica.
+// ── Types ────────────────────────────────────────────────────────────────────
+type MetaTemplate = {
+  id: string;
+  name: string;
+  status: string;
+  category: string;
+  language: string;
+  components?: { type: string; text?: string; buttons?: { type: string; text: string }[] }[];
+};
 
-const BOTON_QR = { type: "QUICK_REPLY", text: "¡Agendemos! 📅" } as const;
-
-const PLANTILLAS = [
-  {
-    id: "30d",
-    tipo: "30 días",
-    nombre_meta: "renovacion_recordatorio_30d",
-    descripcion: "Se envía 30 días antes del vencimiento. Tono cálido, sin urgencia.",
-    color_tipo: "bg-emerald-50 text-emerald-700 border-emerald-200",
-    color_icon: "text-emerald-500",
-    icon: CheckCircle2,
-    boton: BOTON_QR,
-    texto: `Hola {{nombre}} 😊
-
-En la *Clínica Dra. Dennisse Arroyo* nos encanta acompañarte en cada etapa de tu tratamiento.
-
-En 30 días será el momento ideal para tu próxima sesión de *{{tratamiento}}*. Agendarlo con anticipación te asegura el horario que más te acomoda.
-
-¿Cuándo te viene bien? Con gusto te reservamos 🌟
-
-_Responde STOP para dejar de recibir recordatorios._`,
-  },
-  {
-    id: "7d",
-    tipo: "7 días",
-    nombre_meta: "renovacion_recordatorio_7d",
-    descripcion: "Se envía 7 días antes. Tono más activo, genera urgencia suave.",
-    color_tipo: "bg-amber-50 text-amber-700 border-amber-200",
-    color_icon: "text-amber-500",
-    icon: Clock,
-    boton: BOTON_QR,
-    texto: `Hola {{nombre}} 💫
-
-Es el momento perfecto para agendar tu próxima sesión de *{{tratamiento}}* en la *Clínica Dra. Dennisse Arroyo*.
-
-Quedan pocos días para aprovechar la disponibilidad que tenemos esta semana. ¿Te agendamos?
-
-Escríbenos y con gusto te atendemos 🌟
-
-_Responde STOP para dejar de recibir recordatorios._`,
-  },
-  {
-    id: "venc",
-    tipo: "Día de vencimiento",
-    nombre_meta: "renovacion_vencimiento",
-    descripcion: "Se envía el día que vence. Tono empático, enfocado en no perder resultados.",
-    color_tipo: "bg-red-50 text-red-600 border-red-200",
-    color_icon: "text-red-500",
-    icon: AlertTriangle,
-    boton: BOTON_QR,
-    texto: `Hola {{nombre}} ✨
-
-¡Hoy es tu día! En la *Clínica Dra. Dennisse Arroyo* te recordamos que es el momento de tu sesión de *{{tratamiento}}*.
-
-Agenda ahora y sigue invirtiendo en ti. Mereces seguir viéndote y sintiéndote increíble.
-
-Escríbenos y te atendemos hoy mismo 💛
-
-_Responde STOP para dejar de recibir recordatorios._`,
-  },
-] as const;
-
-// ─── Renderer del texto de WhatsApp ──────────────────────────────────────────
-// Interpreta *negrita*, _cursiva_, saltos de línea y variables {{n}}
+// ── Renderer del texto de WhatsApp ──────────────────────────────────────────
 function renderWAText(raw: string, vars: Record<string, string>) {
   let txt = raw;
-  txt = txt.replace(/\{\{nombre\}\}/g, vars["nombre"] || "{{nombre}}");
-  txt = txt.replace(/\{\{tratamiento\}\}/g, vars["tratamiento"] || "{{tratamiento}}");
-  txt = txt.replace(/\{\{fecha\}\}/g, vars["fecha"] || "{{fecha}}");
+  Object.entries(vars).forEach(([k, v]) => {
+    txt = txt.replace(new RegExp(`\\{\\{${k}\\}\\}`, "g"), v || `{{${k}}}`);
+  });
 
   return txt.split("\n").map((line, li) => {
     const parts: React.ReactNode[] = [];
@@ -88,7 +33,7 @@ function renderWAText(raw: string, vars: Record<string, string>) {
     while (remaining.length > 0) {
       const boldMatch = remaining.match(/^\*([^*]+)\*/);
       const italicMatch = remaining.match(/^_([^_]+)_/);
-      const varMatch = remaining.match(/^(\{\{(?:nombre|tratamiento|fecha)\}\})/);
+      const varMatch = remaining.match(/^(\{\{[a-zA-Z_]+\}\})/);
 
       if (boldMatch) {
         parts.push(<strong key={key++} className="font-semibold">{boldMatch[1]}</strong>);
@@ -100,7 +45,7 @@ function renderWAText(raw: string, vars: Record<string, string>) {
         parts.push(<span key={key++} className="bg-primary/20 text-primary px-0.5 rounded font-mono text-[11px]">{varMatch[1]}</span>);
         remaining = remaining.slice(varMatch[0].length);
       } else {
-        const next = remaining.search(/[*_]|\{\{(?:nombre|tratamiento|fecha)\}\}/);
+        const next = remaining.search(/[*_]|\{\{[a-zA-Z_]+\}\}/);
         if (next === -1) { parts.push(<span key={key++}>{remaining}</span>); remaining = ""; }
         else { parts.push(<span key={key++}>{remaining.slice(0, next)}</span>); remaining = remaining.slice(next); }
       }
@@ -110,14 +55,13 @@ function renderWAText(raw: string, vars: Record<string, string>) {
   });
 }
 
-// Resalta variables {{nombre}} etc. en el texto original (vista sin preview)
 function highlightVars(text: string) {
   return text.split("\n").map((line, li) => {
-    const parts = line.split(/(\{\{(?:nombre|tratamiento|fecha)\}\})/);
+    const parts = line.split(/(\{\{[a-zA-Z_]+\}\})/);
     return (
       <p key={li} className={li === 0 ? "" : "mt-1"}>
         {parts.map((part, pi) =>
-          /^\{\{(?:nombre|tratamiento|fecha)\}\}$/.test(part)
+          /^\{\{[a-zA-Z_]+\}\}$/.test(part)
             ? <span key={pi} className="inline-block bg-primary/15 text-primary font-mono text-[11px] px-1 py-0.5 rounded border border-primary/25">{part}</span>
             : <span key={pi}>{part}</span>
         )}
@@ -126,300 +70,532 @@ function highlightVars(text: string) {
   });
 }
 
-// ─── Card de plantilla ────────────────────────────────────────────────────────
-function PlantillaCard({ p }: { p: typeof PLANTILLAS[number] }) {
-  const [copied, setCopied]       = useState(false);
-  const [previewOpen, setPreviewOpen] = useState(false);
-  const [vars, setVars] = useState({ "nombre": "María García", "tratamiento": p.id === "30d" ? "Hilos Delta Lifting®" : p.id === "7d" ? "Profhilo" : "Toxina Botulínica", "fecha": "15 de agosto de 2025" });
+// ── Status badge ─────────────────────────────────────────────────────────────
+function StatusBadge({ status }: { status: string }) {
+  const s = status.toUpperCase();
+  const styles: Record<string, string> = {
+    APPROVED: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    PENDING: "bg-amber-50 text-amber-600 border-amber-200",
+    REJECTED: "bg-red-50 text-red-600 border-red-200",
+    DISABLED: "bg-gray-100 text-gray-500 border-gray-200",
+  };
+  const labels: Record<string, string> = {
+    APPROVED: "Aprobada",
+    PENDING: "Pendiente",
+    REJECTED: "Rechazada",
+    DISABLED: "Deshabilitada",
+  };
+  return (
+    <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${styles[s] || styles.DISABLED}`}>
+      {labels[s] || s}
+    </span>
+  );
+}
 
-  const Icon = p.icon;
+// ── Template Card (from Meta) ────────────────────────────────────────────────
+function TemplateCard({ t, onDelete, deleting }: { t: MetaTemplate; onDelete: () => void; deleting: boolean }) {
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const bodyComp = t.components?.find(c => c.type === "BODY");
+  const buttonsComp = t.components?.find(c => c.type === "BUTTONS");
+  const bodyText = bodyComp?.text || "";
+
+  // Extract variable names from body
+  const varNames = [...bodyText.matchAll(/\{\{(\d+)\}\}/g)].map((_, i) => `param_${i + 1}`);
+  const namedVars = [...bodyText.matchAll(/\{\{([a-zA-Z_]+)\}\}/g)].map(m => m[1]);
+  const allVars = namedVars.length > 0 ? namedVars : varNames;
+
+  const [vars, setVars] = useState<Record<string, string>>(() => {
+    const v: Record<string, string> = {};
+    allVars.forEach(name => {
+      if (name === "nombre") v[name] = "Maria Garcia";
+      else if (name === "tratamiento") v[name] = "Hilos Delta Lifting";
+      else v[name] = `valor_${name}`;
+    });
+    return v;
+  });
 
   function copyText() {
-    navigator.clipboard.writeText(p.texto);
+    navigator.clipboard.writeText(bodyText);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }
 
+  const iconMap: Record<string, { Icon: typeof CheckCircle2; color: string; colorIcon: string }> = {
+    APPROVED: { Icon: CheckCircle2, color: "bg-emerald-50 border-emerald-200", colorIcon: "text-emerald-500" },
+    PENDING: { Icon: Clock, color: "bg-amber-50 border-amber-200", colorIcon: "text-amber-500" },
+    REJECTED: { Icon: AlertTriangle, color: "bg-red-50 border-red-200", colorIcon: "text-red-500" },
+  };
+  const { Icon, color, colorIcon } = iconMap[t.status] || iconMap.PENDING;
+
   return (
     <div className="card-premium overflow-hidden">
-
-      {/* Header de la card */}
       <div className="px-6 py-5 border-b border-border">
         <div className="flex items-start justify-between gap-4 flex-wrap mb-3">
           <div className="flex items-center gap-3">
-            <div className={`w-9 h-9 rounded-xl border flex items-center justify-center ${p.color_tipo.replace("text-", "bg-").replace("-700", "-50").replace("-600", "-50")} shrink-0`}>
-              <Icon className={`w-4.5 h-4.5 ${p.color_icon}`} />
+            <div className={`w-9 h-9 rounded-xl border flex items-center justify-center ${color} shrink-0`}>
+              <Icon className={`w-4.5 h-4.5 ${colorIcon}`} />
             </div>
             <div>
-              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${p.color_tipo}`}>
-                {p.tipo}
+              <p className="text-sm font-semibold">{t.name}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">{t.category} · {t.language}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <StatusBadge status={t.status} />
+            <button
+              onClick={onDelete}
+              disabled={deleting}
+              className="p-1.5 rounded-lg hover:bg-red-50 text-muted-foreground hover:text-red-600 transition-colors disabled:opacity-50"
+              title="Eliminar plantilla"
+            >
+              {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+            </button>
+          </div>
+        </div>
+
+        {buttonsComp?.buttons && buttonsComp.buttons.length > 0 && (
+          <div className="flex items-center gap-2 flex-wrap">
+            {buttonsComp.buttons.map((b, i) => (
+              <span key={i} className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-violet-50 text-violet-700 border border-violet-200">
+                {b.type} · {b.text}
               </span>
-              <p className="text-xs text-muted-foreground mt-0.5">{p.descripcion}</p>
-            </div>
+            ))}
           </div>
-
-          {/* Nombre Meta */}
-          <div className="text-right shrink-0">
-            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-0.5">Nombre en Meta</p>
-            <code className="text-xs font-mono bg-muted border border-border px-2 py-1 rounded">{p.nombre_meta}</code>
-          </div>
-        </div>
-
-        {/* Badges de configuración */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-50 text-blue-600 border border-blue-200">UTILITY</span>
-          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-muted text-muted-foreground border border-border">Idioma: es</span>
-          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-muted text-muted-foreground border border-border">3 variables</span>
-          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-violet-50 text-violet-700 border border-violet-200">
-            Quick Reply · {p.boton.text}
-          </span>
-          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-600 border border-amber-200">Pendiente aprobación</span>
-        </div>
+        )}
       </div>
 
-      {/* Texto de la plantilla */}
-      <div className="px-6 py-5">
-        <div className="flex items-center justify-between mb-3">
-          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Texto de la plantilla</p>
+      {bodyText && (
+        <div className="px-6 py-5">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Texto</p>
+            <button
+              onClick={copyText}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                copied ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-muted hover:bg-muted/80 text-foreground border border-border"
+              }`}
+            >
+              {copied ? <><Check className="w-3.5 h-3.5" /> Copiado</> : <><Copy className="w-3.5 h-3.5" /> Copiar</>}
+            </button>
+          </div>
+          <div className="bg-muted/40 border border-border rounded-xl p-4 text-sm leading-relaxed font-mono text-[13px]">
+            {highlightVars(bodyText)}
+          </div>
+        </div>
+      )}
+
+      {bodyText && (
+        <div className="border-t border-border">
           <button
-            onClick={copyText}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-              copied ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-muted hover:bg-muted/80 text-foreground border border-border"
-            }`}
+            onClick={() => setPreviewOpen(v => !v)}
+            className="w-full flex items-center gap-3 px-6 py-3.5 hover:bg-muted/20 transition-colors text-left"
           >
-            {copied ? <><Check className="w-3.5 h-3.5" /> Copiado</> : <><Copy className="w-3.5 h-3.5" /> Copiar texto</>}
+            <Smartphone className="w-4 h-4 text-primary/60 shrink-0" />
+            <span className="flex-1 text-sm font-medium">Previsualizar</span>
+            {previewOpen ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
           </button>
-        </div>
 
-        {/* Texto con variables resaltadas */}
-        <div className="bg-muted/40 border border-border rounded-xl p-4 text-sm text-foreground leading-relaxed font-mono text-[13px]">
-          {highlightVars(p.texto)}
-        </div>
-
-        {/* Botón de la plantilla */}
-        <div className="mt-4 border border-border rounded-xl overflow-hidden">
-          <div className="px-4 py-2.5 bg-muted/30 border-b border-border flex items-center justify-between">
-            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Botón interactivo</p>
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-violet-50 text-violet-700 border border-violet-200">QUICK_REPLY</span>
-          </div>
-          <div className="px-4 py-3 flex items-center gap-3">
-            <div className="w-7 h-7 rounded-lg bg-violet-50 border border-violet-200 flex items-center justify-center shrink-0">
-              <svg className="w-3.5 h-3.5 text-violet-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <polyline points="22 2 11 13" /><polygon points="22 2 15 22 11 13 2 9 22 2" />
-              </svg>
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-foreground">{p.boton.text}</p>
-              <p className="text-[11px] text-muted-foreground mt-0.5">
-                Al tocar este botón, la paciente envía un mensaje de vuelta a Chatwoot → un agente puede responder directamente.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Leyenda de variables */}
-        <div className="flex items-center gap-4 mt-3 flex-wrap">
-          {[
-            { v: "{{nombre}}", desc: "Nombre del paciente" },
-            { v: "{{tratamiento}}", desc: "Nombre del tratamiento" },
-            { v: "{{fecha}}", desc: "Fecha de vencimiento" },
-          ].map(({ v, desc }) => (
-            <div key={v} className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <span className="bg-primary/15 text-primary font-mono text-[10px] px-1 py-0.5 rounded border border-primary/25">{v}</span>
-              <span>{desc}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Previsualizador */}
-      <div className="border-t border-border">
-        <button
-          onClick={() => setPreviewOpen((v) => !v)}
-          className="w-full flex items-center gap-3 px-6 py-3.5 hover:bg-muted/20 transition-colors text-left"
-        >
-          <Smartphone className="w-4 h-4 text-primary/60 shrink-0" />
-          <span className="flex-1 text-sm font-medium text-foreground">Previsualizar mensaje</span>
-          <span className="text-xs text-muted-foreground mr-2">Como lo verá la paciente en WhatsApp</span>
-          {previewOpen ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
-        </button>
-
-        {previewOpen && (
-          <div className="px-6 pb-6 pt-2 border-t border-border/60">
-            {/* Inputs de variables */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
-              {[
-                { key: "nombre", label: "{{nombre}} Nombre paciente", placeholder: "Ej. María García" },
-                { key: "tratamiento", label: "{{tratamiento}} Tratamiento", placeholder: "Ej. Hilos Delta Lifting®" },
-                { key: "fecha", label: "{{fecha}} Fecha", placeholder: "Ej. 15 de agosto de 2025" },
-              ].map(({ key, label, placeholder }) => (
-                <div key={key}>
-                  <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">{label}</label>
-                  <input
-                    value={vars[key as keyof typeof vars]}
-                    onChange={(e) => setVars((v) => ({ ...v, [key]: e.target.value }))}
-                    placeholder={placeholder}
-                    className="w-full px-3 py-2 rounded-lg border border-border bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/25 focus:border-primary/40 transition-all"
-                  />
-                </div>
-              ))}
-            </div>
-
-            {/* Burbuja WhatsApp */}
-            <div className="rounded-2xl overflow-hidden" style={{ background: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Crect width='100' height='100' fill='%23e5ddd5'/%3E%3C/svg%3E\")", backgroundColor: "#e5ddd5" }}>
-              <div className="px-4 py-5">
-                {/* Barra superior simulada */}
-                <div className="flex items-center gap-2 mb-4 pb-3 border-b border-black/10">
-                  <div className="w-8 h-8 rounded-full bg-[#128C7E] flex items-center justify-center text-white text-xs font-bold shrink-0">D</div>
-                  <div>
-                    <p className="text-xs font-semibold text-gray-800">Clínica Dra. Dennisse</p>
-                    <p className="text-[10px] text-gray-500">WhatsApp Business</p>
-                  </div>
-                </div>
-
-                {/* Burbuja del mensaje + botón Quick Reply */}
-                <div className="flex justify-start">
-                  <div className="max-w-[85%] shadow-sm" style={{ filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.12))" }}>
-                    {/* Cuerpo del mensaje */}
-                    <div className="bg-white rounded-2xl rounded-tl-sm px-4 py-3 relative">
-                      <div className="absolute -left-2 top-0 w-0 h-0" style={{ borderTop: "8px solid white", borderLeft: "8px solid transparent" }} />
-                      <div className="text-[13px] text-gray-800 leading-relaxed">
-                        {renderWAText(p.texto, vars)}
-                      </div>
-                      <p className="text-[10px] text-gray-400 text-right mt-2">
-                        {new Date().toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" })} ✓✓
-                      </p>
+          {previewOpen && (
+            <div className="px-6 pb-6 pt-2 border-t border-border/60">
+              {allVars.length > 0 && (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
+                  {allVars.map(name => (
+                    <div key={name}>
+                      <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">{`{{${name}}}`}</label>
+                      <input
+                        value={vars[name] || ""}
+                        onChange={e => setVars(v => ({ ...v, [name]: e.target.value }))}
+                        className="w-full px-3 py-2 rounded-lg border border-border bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/25 focus:border-primary/40 transition-all"
+                      />
                     </div>
-                    {/* Botón Quick Reply — separado, unido al bubble */}
-                    <div className="bg-white rounded-b-2xl border-t border-gray-100 overflow-hidden mt-px">
-                      <button
-                        type="button"
-                        className="w-full py-2.5 text-center text-[13px] font-semibold text-[#128C7E] hover:bg-gray-50 transition-colors flex items-center justify-center gap-1.5"
-                      >
-                        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                          <polyline points="22 2 11 13" /><polygon points="22 2 15 22 11 13 2 9 22 2" />
-                        </svg>
-                        {p.boton.text}
-                      </button>
+                  ))}
+                </div>
+              )}
+
+              <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: "#e5ddd5" }}>
+                <div className="px-4 py-5">
+                  <div className="flex items-center gap-2 mb-4 pb-3 border-b border-black/10">
+                    <div className="w-8 h-8 rounded-full bg-[#128C7E] flex items-center justify-center text-white text-xs font-bold shrink-0">D</div>
+                    <div>
+                      <p className="text-xs font-semibold text-gray-800">Clinica Dra. Dennisse</p>
+                      <p className="text-[10px] text-gray-500">WhatsApp Business</p>
+                    </div>
+                  </div>
+                  <div className="flex justify-start">
+                    <div className="max-w-[85%] shadow-sm" style={{ filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.12))" }}>
+                      <div className="bg-white rounded-2xl rounded-tl-sm px-4 py-3">
+                        <div className="text-[13px] text-gray-800 leading-relaxed">
+                          {renderWAText(bodyText, vars)}
+                        </div>
+                        <p className="text-[10px] text-gray-400 text-right mt-2">
+                          {new Date().toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" })}
+                        </p>
+                      </div>
+                      {buttonsComp?.buttons?.map((b, i) => (
+                        <div key={i} className="bg-white rounded-b-2xl border-t border-gray-100 overflow-hidden mt-px">
+                          <button type="button" className="w-full py-2.5 text-center text-[13px] font-semibold text-[#128C7E]">
+                            {b.text}
+                          </button>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─── Guía de envío a Meta ─────────────────────────────────────────────────────
-function GuiaMeta() {
-  const [open, setOpen] = useState(false);
-
-  return (
-    <div className="card-premium overflow-hidden">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center gap-3 px-6 py-4 hover:bg-muted/20 transition-colors text-left"
-      >
-        <Info className="w-4 h-4 text-primary shrink-0" />
-        <span className="flex-1 text-sm font-semibold text-foreground">Cómo someter las plantillas a Meta Business Manager</span>
-        {open ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
-      </button>
-
-      {open && (
-        <div className="border-t border-border px-6 py-5 space-y-4">
-          <ol className="space-y-3">
-            {[
-              { n: 1, text: "Ingresa a Meta Business Suite → WhatsApp Manager → Message Templates." },
-              { n: 2, text: "Clic en «Create Template». Selecciona categoría UTILITY (no Marketing)." },
-              { n: 3, text: "Idioma: Español (es) o Español Latinoamérica (es_419)." },
-              { n: 4, text: "En el cuerpo del mensaje pega exactamente el texto de arriba. Para agregar variables escribe {{nombre}}, {{tratamiento}}, {{fecha}} — Meta las convierte automáticamente a parámetros." },
-              { n: 5, text: "Nombre de la plantilla: usa el nombre exacto que aparece en «Nombre en Meta» (p.e. renovacion_recordatorio_30d). Solo letras minúsculas, números y guiones bajos." },
-              { n: 6, text: "Enviar para revisión. El proceso toma entre 24 y 48 horas." },
-              { n: 7, text: "Una vez aprobada, copia el nombre exacto al archivo .env del servicio de recordatorios (WA_TEMPLATE_30D, WA_TEMPLATE_7D, WA_TEMPLATE_VENCIMIENTO)." },
-            ].map(({ n, text }) => (
-              <li key={n} className="flex items-start gap-3">
-                <span className="w-5 h-5 rounded-full bg-primary/10 border border-primary/20 text-primary text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">{n}</span>
-                <p className="text-sm text-foreground leading-relaxed">{text}</p>
-              </li>
-            ))}
-          </ol>
-
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-            <p className="text-xs font-semibold text-amber-700 mb-1">⚠️ Importante</p>
-            <p className="text-xs text-amber-700 leading-relaxed">
-              Si Meta rechaza una plantilla, revisa que no tenga URLs, que el nombre del negocio esté claramente mencionado y que el mensaje no suene a publicidad genérica. Las plantillas UTILITY con contexto médico/de salud se aprueban bien.
-            </p>
-          </div>
-
-          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-            <p className="text-xs font-semibold text-blue-700 mb-1">💡 Sobre el STOP</p>
-            <p className="text-xs text-blue-700 leading-relaxed">
-              El texto «Responde STOP para dejar de recibir recordatorios» es obligatorio para cumplir con la política de opt-out de Meta. Si una paciente responde STOP, Chatwoot recibirá el mensaje — configura una automatización en Chatwoot para marcarlo y que el sistema no le envíe más recordatorios.
-            </p>
-          </div>
+          )}
         </div>
       )}
     </div>
   );
 }
 
-// ─── Página principal ─────────────────────────────────────────────────────────
+// ── Create Template Dialog ───────────────────────────────────────────────────
+function CrearPlantillaDialog({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: () => void }) {
+  const [name, setName] = useState("");
+  const [category, setCategory] = useState("MARKETING");
+  const [language, setLanguage] = useState("es_PE");
+  const [bodyText, setBodyText] = useState("");
+  const [buttonText, setButtonText] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [previewVars, setPreviewVars] = useState<Record<string, string>>({});
+
+  // Extract variables from body text
+  const variables = [...(bodyText.matchAll(/\{\{([a-zA-Z_]+)\}\}/g) || [])].map(m => m[1]);
+  const uniqueVars = [...new Set(variables)];
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim() || !bodyText.trim()) {
+      toast.error("Nombre y texto son obligatorios");
+      return;
+    }
+    if (!/^[a-z0-9_]+$/.test(name)) {
+      toast.error("El nombre solo puede contener letras minusculas, numeros y guiones bajos");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const buttons = buttonText.trim() ? [{ type: "QUICK_REPLY", text: buttonText.trim() }] : [];
+      const res = await fetch("/staff/api/templates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, category, language, body_text: bodyText, buttons }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || "Error al crear plantilla");
+        return;
+      }
+      toast.success(`Plantilla "${name}" enviada a Meta para aprobacion`);
+      onCreated();
+      onClose();
+      setName(""); setBodyText(""); setButtonText("");
+    } catch {
+      toast.error("Error de conexion");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+      <div className="bg-background rounded-2xl shadow-2xl border border-border w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border sticky top-0 bg-background z-10">
+          <div className="flex items-center gap-2.5">
+            <Plus className="w-4 h-4 text-primary" />
+            <span className="font-serif text-base font-semibold">Nueva Plantilla de WhatsApp</span>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-6 space-y-5">
+          {/* Name, Category, Language */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">
+                Nombre (solo a-z, 0-9, _)
+              </label>
+              <input
+                value={name}
+                onChange={e => setName(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))}
+                placeholder="ej. bienvenida_paciente"
+                className="w-full px-3 py-2.5 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/25 focus:border-primary/40"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Categoria</label>
+              <select
+                value={category}
+                onChange={e => setCategory(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/25 bg-white"
+              >
+                <option value="MARKETING">Marketing</option>
+                <option value="UTILITY">Utility</option>
+                <option value="AUTHENTICATION">Authentication</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Idioma</label>
+              <select
+                value={language}
+                onChange={e => setLanguage(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/25 bg-white"
+              >
+                <option value="es_PE">Espanol (Peru)</option>
+                <option value="es">Espanol</option>
+                <option value="es_419">Espanol (Latam)</option>
+                <option value="en_US">English (US)</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Body */}
+          <div>
+            <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">
+              Texto del mensaje
+            </label>
+            <p className="text-[11px] text-muted-foreground mb-2">
+              Usa {"{{nombre}}"}, {"{{tratamiento}}"} o cualquier {"{{variable}}"} para parametros dinamicos. Usa *texto* para negrita y _texto_ para cursiva.
+            </p>
+            <textarea
+              value={bodyText}
+              onChange={e => setBodyText(e.target.value)}
+              rows={8}
+              placeholder={`Hola {{nombre}} \n\nTe recordamos tu cita de *{{tratamiento}}* en nuestra clinica.\n\n_Responde STOP para no recibir mas mensajes._`}
+              className="w-full px-4 py-3 rounded-xl border border-border text-sm font-mono leading-relaxed focus:outline-none focus:ring-2 focus:ring-primary/25 focus:border-primary/40 resize-y"
+            />
+            {uniqueVars.length > 0 && (
+              <div className="flex items-center gap-3 mt-2 flex-wrap">
+                <span className="text-[10px] text-muted-foreground font-semibold">Variables detectadas:</span>
+                {uniqueVars.map(v => (
+                  <span key={v} className="bg-primary/15 text-primary font-mono text-[10px] px-1.5 py-0.5 rounded border border-primary/25">
+                    {`{{${v}}}`}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Button */}
+          <div>
+            <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">
+              Boton Quick Reply (opcional)
+            </label>
+            <input
+              value={buttonText}
+              onChange={e => setButtonText(e.target.value)}
+              placeholder='ej. Quiero agendar mi cita'
+              className="w-full px-3 py-2.5 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/25"
+            />
+          </div>
+
+          {/* Preview */}
+          {bodyText.trim() && (
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Vista previa</p>
+              {uniqueVars.length > 0 && (
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
+                  {uniqueVars.map(v => (
+                    <input
+                      key={v}
+                      value={previewVars[v] || ""}
+                      onChange={e => setPreviewVars(prev => ({ ...prev, [v]: e.target.value }))}
+                      placeholder={`{{${v}}}`}
+                      className="px-2 py-1.5 rounded-lg border border-border text-xs focus:outline-none focus:ring-2 focus:ring-primary/25"
+                    />
+                  ))}
+                </div>
+              )}
+              <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: "#e5ddd5" }}>
+                <div className="px-4 py-4">
+                  <div className="flex justify-start">
+                    <div className="max-w-[85%]">
+                      <div className="bg-white rounded-2xl rounded-tl-sm px-4 py-3 shadow-sm">
+                        <div className="text-[13px] text-gray-800 leading-relaxed">
+                          {renderWAText(bodyText, previewVars)}
+                        </div>
+                      </div>
+                      {buttonText.trim() && (
+                        <div className="bg-white rounded-b-2xl border-t border-gray-100 mt-px">
+                          <div className="py-2.5 text-center text-[13px] font-semibold text-[#128C7E]">{buttonText}</div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Submit */}
+          <div className="flex justify-end gap-3 pt-2">
+            <button type="button" onClick={onClose} className="px-4 py-2.5 rounded-xl text-sm font-semibold border border-border hover:bg-muted transition-colors">
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={loading || !name.trim() || !bodyText.trim()}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold bg-primary text-white hover:bg-primary-hover transition-colors disabled:opacity-50"
+            >
+              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              Enviar a Meta
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ── Main Page ────────────────────────────────────────────────────────────────
 export default function PlantillasPage() {
+  const [templates, setTemplates] = useState<MetaTemplate[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [deletingName, setDeletingName] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+
+  const fetchTemplates = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/staff/api/templates");
+      const data = await res.json();
+      if (data.templates) {
+        setTemplates(data.templates);
+      }
+    } catch {
+      toast.error("Error al cargar plantillas");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchTemplates(); }, [fetchTemplates]);
+
+  async function handleDelete(name: string) {
+    if (!confirm(`Eliminar plantilla "${name}"? Esta accion no se puede deshacer.`)) return;
+    setDeletingName(name);
+    try {
+      const res = await fetch("/staff/api/templates", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || "Error al eliminar");
+        return;
+      }
+      toast.success(`Plantilla "${name}" eliminada`);
+      fetchTemplates();
+    } catch {
+      toast.error("Error de conexion");
+    } finally {
+      setDeletingName(null);
+    }
+  }
+
+  const approved = templates.filter(t => t.status === "APPROVED");
+  const pending = templates.filter(t => t.status === "PENDING");
+  const rejected = templates.filter(t => t.status === "REJECTED");
+  const other = templates.filter(t => !["APPROVED", "PENDING", "REJECTED"].includes(t.status));
+
   return (
     <div className="min-h-full bg-background">
-
-      {/* Header */}
       <header className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b border-border">
         <div className="flex items-center justify-between px-4 md:px-8 h-14 md:h-16">
           <div className="flex items-center gap-2.5">
             <MessageSquareText className="w-4 h-4 text-primary/60" />
             <span className="font-serif text-sm md:text-base font-semibold">Plantillas de WhatsApp</span>
           </div>
-          <span className="text-xs text-muted-foreground hidden sm:block">
-            {PLANTILLAS.length} plantillas · Categoría UTILITY · Idioma es
-          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={fetchTemplates}
+              disabled={loading}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-muted hover:bg-muted/80 border border-border transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
+              Actualizar
+            </button>
+            <button
+              onClick={() => setCreateOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-primary text-white hover:bg-primary-hover transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Nueva Plantilla
+            </button>
+          </div>
         </div>
       </header>
 
       <div className="px-4 md:px-8 py-6 md:py-8 max-w-4xl mx-auto space-y-6">
-
-        {/* Título */}
         <div className="fade-up">
-          <p className="label-elegant mb-1.5">Sistema de Recordatorios</p>
+          <p className="label-elegant mb-1.5">Meta Business Manager</p>
           <div className="flex items-end justify-between flex-wrap gap-2">
             <h2 className="font-serif text-xl md:text-2xl font-semibold">Plantillas de WhatsApp</h2>
             <p className="text-sm text-muted-foreground">
-              3 plantillas · <strong className="text-foreground">9 variables</strong> en total
+              {templates.length} plantilla{templates.length !== 1 ? "s" : ""} ·{" "}
+              <span className="text-emerald-600 font-semibold">{approved.length} aprobada{approved.length !== 1 ? "s" : ""}</span> ·{" "}
+              <span className="text-amber-600 font-semibold">{pending.length} pendiente{pending.length !== 1 ? "s" : ""}</span>
+              {rejected.length > 0 && <> · <span className="text-red-600 font-semibold">{rejected.length} rechazada{rejected.length !== 1 ? "s" : ""}</span></>}
             </p>
           </div>
           <div className="gold-rule mt-4" />
         </div>
 
-        {/* Guía Meta */}
-        <div className="fade-up stagger-1">
-          <GuiaMeta />
-        </div>
+        {loading && templates.length === 0 ? (
+          <div className="flex items-center justify-center py-20">
+            <Loader2 className="w-6 h-6 animate-spin text-primary/60" />
+            <span className="ml-3 text-sm text-muted-foreground">Cargando plantillas desde Meta...</span>
+          </div>
+        ) : templates.length === 0 ? (
+          <div className="card-premium p-8 text-center">
+            <MessageSquareText className="w-8 h-8 text-muted-foreground/40 mx-auto mb-3" />
+            <p className="text-sm text-muted-foreground">No hay plantillas creadas aun</p>
+            <button
+              onClick={() => setCreateOpen(true)}
+              className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-primary text-white hover:bg-primary-hover transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              Crear primera plantilla
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-5 fade-up stagger-1">
+            {/* Info box */}
+            <div className="card-premium p-4 border-l-4 border-l-primary/40">
+              <div className="flex items-start gap-2">
+                <Info className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                <div className="text-xs text-muted-foreground leading-relaxed">
+                  <p>Las plantillas se envian a <strong>Meta</strong> para revision. El proceso toma 24-48 horas. Una vez aprobadas, se pueden usar para enviar mensajes masivos via WhatsApp Business API.</p>
+                  <p className="mt-1">Usa variables como <code className="bg-muted px-1 rounded">{"{{nombre}}"}</code> para personalizar mensajes. Solo letras minusculas, numeros y guiones bajos en el nombre.</p>
+                </div>
+              </div>
+            </div>
 
-        {/* Plantillas */}
-        <div className="space-y-5 fade-up stagger-2">
-          {PLANTILLAS.map((p) => (
-            <PlantillaCard key={p.id} p={p} />
-          ))}
-        </div>
-
-        {/* Nota de sincronización */}
-        <div className="card-premium p-5 border-l-4 border-l-primary/40 fade-up stagger-3">
-          <p className="text-xs font-semibold text-foreground mb-1">Sincronización con el servicio Python</p>
-          <p className="text-xs text-muted-foreground leading-relaxed">
-            Los textos aquí son el espejo de <code className="bg-muted px-1 rounded font-mono">reminders-service/templates.py</code>.
-            Si modificas una plantilla aprobada y la re-sometes a Meta, actualiza también ese archivo para que el servicio use el mismo texto.
-          </p>
-        </div>
-
+            {[...approved, ...pending, ...rejected, ...other].map(t => (
+              <TemplateCard
+                key={t.id}
+                t={t}
+                onDelete={() => handleDelete(t.name)}
+                deleting={deletingName === t.name}
+              />
+            ))}
+          </div>
+        )}
       </div>
+
+      <CrearPlantillaDialog
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onCreated={fetchTemplates}
+      />
     </div>
   );
 }
