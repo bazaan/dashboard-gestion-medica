@@ -144,52 +144,70 @@ def _get_or_create_contact(
     return contact_id
 
 
-def _create_conversation_with_template(
+def _find_or_create_conversation(
     client: httpx.Client,
     cfg: Config,
     contact_id: int,
-    message: dict,
 ) -> int:
     """
-    Crea conversación outbound de WhatsApp con template message.
-    Retorna el conversation_id creado.
+    Busca una conversación abierta con el contacto en el inbox de WA.
+    Si no existe, crea una nueva (sin template).
+    Retorna el conversation_id.
+    """
+    # Buscar conversaciones existentes del contacto
+    data = _get(client, f"/contacts/{contact_id}/conversations")
+    convos = data.get("payload", [])
+    for c in convos:
+        if c.get("inbox_id") == cfg.chatwoot_wa_inbox_id and c.get("status") == "open":
+            logger.debug("Conversación existente id=%d para contacto=%d", c["id"], contact_id)
+            return c["id"]
+
+    # Crear conversación vacía (sin template — evita error #132000)
+    data = _post(client, "/conversations", {
+        "inbox_id": cfg.chatwoot_wa_inbox_id,
+        "contact_id": contact_id,
+    })
+    conv = data.get("payload", data)
+    if isinstance(conv, dict) and "id" in conv:
+        logger.debug("Conversación creada id=%d para contacto=%d", conv["id"], contact_id)
+        return conv["id"]
+    raise RuntimeError(f"Respuesta inesperada al crear conversación: {data}")
+
+
+def _send_template_message(
+    client: httpx.Client,
+    cfg: Config,
+    conversation_id: int,
+    message: dict,
+) -> None:
+    """
+    Envía un template de WhatsApp como mensaje en una conversación existente.
+    Este método funciona tanto dentro como fuera de la ventana de 24h.
 
     Estructura de 'message':
       {
         content:           str   — texto plano (fallback)
         template_name:     str   — nombre del template en Meta
-        template_language: str   — código de idioma ("es")
-        params:            dict  — {"nombre": "Juan", "tratamiento": "Hilos Delta", "fecha": "15 de marzo"}
+        template_language: str   — código de idioma ("es_PE")
+        params:            dict  — {"nombre": "Juan", "tratamiento": "Hilos Delta"}
       }
     """
     body: dict = {
-        "inbox_id": cfg.chatwoot_wa_inbox_id,
-        "contact_id": contact_id,
+        "message_type": "outgoing",
     }
 
     if cfg.use_wa_templates:
-        # Template message (obligatorio para outreach frío, fuera de ventana 24h)
-        # Botones QUICK_REPLY estáticos no llevan parámetros en la API de Meta —
-        # el texto del botón ya está registrado en el template aprobado.
-        # Incluir "buttons" en template_params causa #132000 en Chatwoot v3+.
-        body["message"] = {
-            "content": message["content"],
-            "template_params": {
-                "name": message["template_name"],
-                "category": "MARKETING",
-                "language": message["template_language"],
-                "processed_params": message["params"],
-            },
+        body["content"] = message["content"]
+        body["template_params"] = {
+            "name": message["template_name"],
+            "category": "MARKETING",
+            "language": message["template_language"],
+            "processed_params": message["params"],
         }
     else:
-        # Texto plano — solo funciona dentro de ventana de sesión de 24h
-        body["message"] = {"content": message["content"]}
+        body["content"] = message["content"]
 
-    data = _post(client, "/conversations", body)
-    conv = data.get("payload", data)
-    if isinstance(conv, dict) and "id" in conv:
-        return conv["id"]
-    raise RuntimeError(f"Respuesta inesperada al crear conversación: {data}")
+    _post(client, f"/conversations/{conversation_id}/messages", body)
 
 
 # ─── Punto de entrada público ─────────────────────────────────────────────────
@@ -224,7 +242,8 @@ def send_reminder(
 
     with _build_http_client(cfg) as client:
         contact_id = _get_or_create_contact(client, phone_e164, nombres, apellidos)
-        conv_id = _create_conversation_with_template(client, cfg, contact_id, message)
+        conv_id = _find_or_create_conversation(client, cfg, contact_id)
+        _send_template_message(client, cfg, conv_id, message)
 
     logger.info(
         "Enviado | paciente=%s | conv=%d | template=%s",

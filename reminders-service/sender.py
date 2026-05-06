@@ -8,9 +8,15 @@ Diseño de resiliencia:
     "pendiente" y se reintentará al día siguiente (riesgo de duplicado bajo,
     asumible para un cron diario de una clínica pequeña)
   - Estadísticas al final para monitoreo
+
+Agrupación:
+  - Recordatorios del mismo paciente + mismo tipo + misma fecha se agrupan
+    en un solo mensaje de WhatsApp (ej: "Neauvia hidrodeluxe y Rejuran")
+  - Evita que un paciente reciba múltiples mensajes idénticos el mismo día
 """
 import logging
 import time
+from collections import defaultdict
 
 from config import Config
 import db
@@ -18,6 +24,30 @@ import chatwoot
 import templates
 
 logger = logging.getLogger(__name__)
+
+
+def _group_recordatorios(recordatorios: list[db.Recordatorio]) -> list[tuple[list[db.Recordatorio], str]]:
+    """
+    Agrupa recordatorios por (paciente_id, tipo, fecha_vencimiento).
+    Retorna lista de (recordatorios_del_grupo, tratamientos_combinados).
+    """
+    groups: dict[tuple, list[db.Recordatorio]] = defaultdict(list)
+    for rec in recordatorios:
+        key = (rec.paciente_id, rec.tipo_recordatorio, rec.fecha_vencimiento)
+        groups[key].append(rec)
+
+    result = []
+    for recs in groups.values():
+        nombres_tratamiento = list(dict.fromkeys(r.tratamiento_nombre for r in recs))
+        if len(nombres_tratamiento) == 1:
+            combinado = nombres_tratamiento[0]
+        elif len(nombres_tratamiento) == 2:
+            combinado = f"{nombres_tratamiento[0]} y {nombres_tratamiento[1]}"
+        else:
+            combinado = ", ".join(nombres_tratamiento[:-1]) + f" y {nombres_tratamiento[-1]}"
+        result.append((recs, combinado))
+
+    return result
 
 
 def run_batch(cfg: Config) -> dict:
@@ -34,61 +64,66 @@ def run_batch(cfg: Config) -> dict:
         logger.info("Sin recordatorios pendientes para hoy.")
         return stats
 
-    logger.info("Iniciando envío de %d recordatorio(s)...", len(recordatorios))
+    grouped = _group_recordatorios(recordatorios)
+    logger.info(
+        "Iniciando envío: %d recordatorio(s) agrupados en %d mensaje(s)...",
+        len(recordatorios), len(grouped),
+    )
 
-    for rec in recordatorios:
-        nombre_display = f"{rec.nombres} {rec.apellidos}".strip() or "Paciente"
+    for recs, tratamiento_combinado in grouped:
+        rep = recs[0]  # representante del grupo
+        nombre_display = f"{rep.nombres} {rep.apellidos}".strip() or "Paciente"
 
-        # Construir mensaje según tipo de recordatorio
         message = templates.get_message(
             cfg=cfg,
-            tipo_recordatorio=rec.tipo_recordatorio,
-            nombre=rec.nombres or nombre_display,
-            tratamiento=rec.tratamiento_nombre,
-            fecha_vencimiento=rec.fecha_vencimiento,
+            tipo_recordatorio=rep.tipo_recordatorio,
+            nombre=rep.nombres or nombre_display,
+            tratamiento=tratamiento_combinado,
+            fecha_vencimiento=rep.fecha_vencimiento,
         )
 
         try:
             chatwoot.send_reminder(
                 cfg=cfg,
-                paciente_id=rec.paciente_id,
-                nombres=rec.nombres,
-                apellidos=rec.apellidos,
-                celular_raw=rec.telefono,
+                paciente_id=rep.paciente_id,
+                nombres=rep.nombres,
+                apellidos=rep.apellidos,
+                celular_raw=rep.telefono,
                 message=message,
                 dry_run=cfg.dry_run,
             )
 
             if not cfg.dry_run:
-                db.mark_enviado(cfg, rec.id)
+                for r in recs:
+                    db.mark_enviado(cfg, r.id)
 
-            stats["enviados"] += 1
+            stats["enviados"] += len(recs)
 
         except ValueError as exc:
-            # Error de validación (ej. teléfono inválido) — no tiene sentido reintentar
             logger.warning(
-                "Recordatorio %s omitido — datos inválidos: %s", rec.id, exc
+                "Recordatorio(s) %s omitido(s) — datos inválidos: %s",
+                [r.id for r in recs], exc,
             )
             if not cfg.dry_run:
-                db.mark_fallido(cfg, rec.id, str(exc))
-            stats["omitidos"] += 1
+                for r in recs:
+                    db.mark_fallido(cfg, r.id, str(exc))
+            stats["omitidos"] += len(recs)
 
         except Exception as exc:
-            # Error de red, API, etc. — marcar fallido para revisión manual
             logger.error(
-                "Error enviando recordatorio %s: %s", rec.id, exc, exc_info=True
+                "Error enviando recordatorio(s) %s: %s",
+                [r.id for r in recs], exc, exc_info=True,
             )
             if not cfg.dry_run:
-                db.mark_fallido(cfg, rec.id, str(exc))
-            stats["fallidos"] += 1
+                for r in recs:
+                    db.mark_fallido(cfg, r.id, str(exc))
+            stats["fallidos"] += len(recs)
 
-        # Pausa entre envíos para respetar rate limits de Meta (80 msg/s permitidos,
-        # pero con delay somos buenos vecinos y evitamos bloqueos de Chatwoot)
         if cfg.delay_between_sends > 0:
             time.sleep(cfg.delay_between_sends)
 
     logger.info(
-        "Ciclo completado — enviados: %d | fallidos: %d | omitidos: %d | total: %d",
-        stats["enviados"], stats["fallidos"], stats["omitidos"], stats["total"],
+        "Ciclo completado — enviados: %d | fallidos: %d | omitidos: %d | total: %d | mensajes: %d",
+        stats["enviados"], stats["fallidos"], stats["omitidos"], stats["total"], len(grouped),
     )
     return stats

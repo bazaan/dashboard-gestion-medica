@@ -39,11 +39,12 @@ _responded_conversations: set[int] = set()
 
 
 def _build_wa_link(nombre: Optional[str] = None) -> str:
-    """Construye el link de WhatsApp de la clínica con mensaje pre-armado."""
-    texto = "¡Hola! Vi el recordatorio de mi tratamiento y me gustaría agendar mi próxima cita"
+    """Construye el link de WhatsApp de la clínica con mensaje pre-armado.
+    Usa wa.me porque WhatsApp bloquea links de api.whatsapp.com dentro de sus mensajes."""
+    texto = "Hola, vi el recordatorio y quiero agendar mi cita"
     if nombre:
-        texto = f"¡Hola! Soy {nombre}, vi el recordatorio de mi tratamiento y me gustaría agendar mi próxima cita"
-    return f"https://api.whatsapp.com/send?phone={CLINICA_WA_NUMBER}&text={urllib.parse.quote(texto)}"
+        texto = f"Hola, soy {nombre}, vi el recordatorio y quiero agendar mi cita"
+    return f"https://wa.me/{CLINICA_WA_NUMBER}?text={urllib.parse.quote(texto)}"
 
 
 def _send_reply(
