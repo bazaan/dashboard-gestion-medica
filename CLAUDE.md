@@ -183,13 +183,13 @@ Servicio Python independiente desplegado en **Railway**. Corre diariamente a las
 
 | Variable env | Nombre en Meta | Idioma | Categoría | Estado |
 |---|---|---|---|---|
-| `WA_TEMPLATE_30D` | `renovacion_recordatorio_30d` | `es_PE` | MARKETING | Pendiente |
-| `WA_TEMPLATE_7D` | `renovacion_recordatorio_7d` | `es_PE` | MARKETING | Pendiente |
-| `WA_TEMPLATE_VENCIMIENTO` | `renovacion_vencimiento` | `es_PE` | MARKETING | Pendiente |
+| `WA_TEMPLATE_30D` | `renovacion_recordatorio_30d` | `es_PE` | MARKETING | PENDING (re-enviado con botones) |
+| `WA_TEMPLATE_7D` | `renovacion_recordatorio_7d` | `es_PE` | MARKETING | PENDING (re-enviado con botones) |
+| `WA_TEMPLATE_VENCIMIENTO` | `renovacion_vencimiento` | `es_PE` | MARKETING | APPROVED |
 
 > **Parámetros**: NAMED → `{{nombre}}` y `{{tratamiento}}` (solo 2, sin fecha). Botón Quick Reply: "Quiero agendar mi cita" (solo en `renovacion_vencimiento`).
 
-> **Estado**: Los 3 templates están PENDING en Meta Business Manager. Cuando sean aprobados, el servicio de recordatorios funcionará automáticamente.
+> **Estado**: `renovacion_vencimiento` APPROVED y funcionando. Los otros 2 fueron re-enviados a Meta con botones QR y están PENDING.
 
 **Variables de entorno del servicio** (configurar en Railway):
 ```
@@ -224,25 +224,31 @@ LOG_LEVEL=INFO
 - Meta WABA ID: `3598875606929262`
 - Meta API token: en `provider_config.api_key` del inbox 65 de Chatwoot
 
-**Cómo enviar template vía Chatwoot API** (método confirmado funcional):
+**Cómo enviar template vía Chatwoot API** (método two-step, confirmado funcional):
+
+Paso 1 — Crear/encontrar conversación (SIN template):
 ```bash
 POST https://chats.alef.company/api/v1/accounts/4/conversations
+{ "inbox_id": 65, "contact_id": <id> }
+```
+
+Paso 2 — Enviar template como mensaje en la conversación:
+```bash
+POST https://chats.alef.company/api/v1/accounts/4/conversations/<conv_id>/messages
 {
-  "inbox_id": 65,
-  "contact_id": <id>,
-  "message": {
-    "content": "texto fallback",
-    "template_params": {
-      "name": "renovacion_recordatorio_30d",
-      "category": "MARKETING",
-      "language": "es_PE",
-      "processed_params": { "nombre": "Juan", "tratamiento": "Hilos Delta" }
-    }
+  "message_type": "outgoing",
+  "content": "texto fallback",
+  "template_params": {
+    "name": "renovacion_vencimiento",
+    "category": "MARKETING",
+    "language": "es_PE",
+    "processed_params": { "nombre": "Juan", "tratamiento": "Rejuran" }
   }
 }
 ```
 
-> Los 3 templates de renovación usan params NAMED: `nombre` y `tratamiento`. **No incluir `buttons`** en `template_params` — Chatwoot lo agrega mal y causa error `#132000`.
+> **IMPORTANTE**: Crear conversación con template_params en un solo paso causa error `#132000`. Siempre usar el método two-step.
+> Los templates usan params NAMED: `nombre` y `tratamiento`. **No incluir `buttons`** en `template_params`.
 
 **Paciente de prueba** (creado para testear el flujo end-to-end):
 - Nombre: Juan Pablo | ID: `0acad5d5-2a7a-4adb-9b5a-13d3749a4a20`
@@ -314,16 +320,16 @@ Bot automático que responde cuando un paciente hace clic en el botón Quick Rep
 - `CLINICA_WA_NUMBER` — número de la clínica (default: `51961847489`)
 - `PORT` — puerto del server (default: `8080`)
 
-**Estado:** Código listo. Pendiente:
-1. Esperar aprobación de templates en Meta
-2. Deploy a Railway
-3. Configurar webhook en Chatwoot account 4 → `https://<url-railway>/webhook/chatwoot`
+**Estado:** PRODUCTIVO en Railway desde 2026-05-06.
+- URL: `https://reminders-service-production-10e2.up.railway.app`
+- Webhook Chatwoot: ID 10, apuntando a `/webhook/chatwoot`
+- Link usa formato `wa.me` (WhatsApp bloquea `api.whatsapp.com` dentro de sus mensajes)
 
 ## Roadmap (Próximos Pasos)
 
-1. ~~**Resolver entrega de templates MARKETING**~~ — ✅ Templates re-sometidos como `renovacion_recordatorio_30d`, `renovacion_recordatorio_7d`, `renovacion_vencimiento` en cuenta real (account 4, inbox 65, +51 981 452 802). Pendiente aprobación de Meta.
-2. **Deploy reminders-service a Railway** — copiar variables actualizadas (CHATWOOT_ACCOUNT_ID=4, CHATWOOT_WA_INBOX_ID=65, templates nuevos, CLINICA_WA_NUMBER)
-3. **Activar webhook en Chatwoot** — configurar URL del webhook en account 4 apuntando al servicio en Railway
+1. ~~**Resolver entrega de templates MARKETING**~~ — `renovacion_vencimiento` APPROVED. Los otros 2 re-enviados con botones, PENDING.
+2. ~~**Deploy reminders-service a Railway**~~ — ✅ Deployado 2026-05-06: `reminders-service-production-10e2.up.railway.app`. Cron 9AM Lima + webhook bot.
+3. ~~**Activar webhook en Chatwoot**~~ — ✅ Webhook ID 10 configurado en account 4.
 4. ~~**Deploy dashboard a Netlify**~~ — ✅ conectado a rama `main`, deploy automático en cada push
 5. ~~**CRUD Pacientes completo**~~ — ✅ implementado (edición y eliminación en `NuevoPacienteDrawer`)
 6. **Middleware de autenticación** — activar `src/proxy.ts` renombrándolo a `src/middleware.ts`
@@ -331,5 +337,6 @@ Bot automático que responde cuando un paciente hace clic en el botón Quick Rep
 8. ~~**Página de configuración**~~ — ✅ implementada (gestión usuarios, datos clínica, WA status, permisos, audit log)
 9. ~~**Impresión de historia clínica**~~ — ✅ botón "Imprimir" en tab Historia Clínica, genera PDF con datos del paciente + historia base + todas las evoluciones
 10. **Contrato de confidencialidad** — la Dra. requiere un acuerdo firmado por cada colaborador que acceda al sistema. Pendiente imprimir y firmar.
+11. **Esperar aprobación templates 30d y 7d** en Meta para activar el flujo completo de 3 recordatorios.
 
 > Ver `PROYECTO.md` para la bitácora completa, arquitectura del sistema y notas técnicas detalladas.
