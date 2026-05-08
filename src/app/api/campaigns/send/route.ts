@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-const CHATWOOT_BASE = "https://chats.alef.company";
-const CHATWOOT_TOKEN = "xBsW4FE3FCZdZbgXgdjrHfUA";
-const CHATWOOT_ACCOUNT = 4;
-const CHATWOOT_INBOX = 65;
+const CHATWOOT_BASE = process.env.CHATWOOT_BASE_URL || "https://chats.alef.company";
+const CHATWOOT_TOKEN = process.env.CHATWOOT_API_TOKEN || "xBsW4FE3FCZdZbgXgdjrHfUA";
+const CHATWOOT_ACCOUNT = Number(process.env.CHATWOOT_ACCOUNT_ID || "4");
+const CHATWOOT_INBOX = Number(process.env.CHATWOOT_WA_INBOX_ID || "65");
 
-// Normalize phone to E.164 Peru format
+// Costo por mensaje de template MARKETING en Peru (USD) — Meta pricing 2024/2025
+const COSTO_POR_MENSAJE_USD = 0.0541;
+
 function normalizePhone(phone: string): string | null {
   if (!phone) return null;
   const digits = phone.replace(/\D/g, "");
@@ -16,76 +18,67 @@ function normalizePhone(phone: string): string | null {
   return null;
 }
 
-// Search or create contact in Chatwoot
-async function getOrCreateContact(phone: string, name: string): Promise<number | null> {
-  // Search by phone
-  const searchRes = await fetch(
-    `${CHATWOOT_BASE}/api/v1/accounts/${CHATWOOT_ACCOUNT}/contacts/search?q=${encodeURIComponent(phone)}`,
-    { headers: { api_access_token: CHATWOOT_TOKEN } }
-  );
-  const searchData = await searchRes.json();
-  const contacts = searchData.payload ?? [];
-  if (contacts.length > 0) return contacts[0].id;
-
-  // Create contact
-  const createRes = await fetch(
-    `${CHATWOOT_BASE}/api/v1/accounts/${CHATWOOT_ACCOUNT}/contacts`,
-    {
-      method: "POST",
-      headers: {
-        api_access_token: CHATWOOT_TOKEN,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        inbox_id: CHATWOOT_INBOX,
-        name,
-        phone_number: phone,
-      }),
-    }
-  );
-  const createData = await createRes.json();
-  return createData.payload?.contact?.id ?? null;
+async function chatwootGet(path: string) {
+  const res = await fetch(`${CHATWOOT_BASE}/api/v1/accounts/${CHATWOOT_ACCOUNT}${path}`, {
+    headers: { api_access_token: CHATWOOT_TOKEN },
+  });
+  return res.json();
 }
 
-// Send template message via Chatwoot
-async function sendTemplate(
+async function chatwootPost(path: string, body: Record<string, unknown>) {
+  const res = await fetch(`${CHATWOOT_BASE}/api/v1/accounts/${CHATWOOT_ACCOUNT}${path}`, {
+    method: "POST",
+    headers: { api_access_token: CHATWOOT_TOKEN, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Chatwoot ${res.status}: ${text.slice(0, 200)}`);
+  }
+  return res.json();
+}
+
+async function getOrCreateContact(phone: string, name: string): Promise<number> {
+  const data = await chatwootGet(`/contacts/search?q=${encodeURIComponent(phone)}&include_contacts=true`);
+  const contacts = data.payload?.contacts ?? data.payload ?? [];
+  if (contacts.length > 0) return contacts[0].id;
+
+  const createData = await chatwootPost("/contacts", { phone_number: phone, name });
+  const payload = createData.payload ?? createData;
+  const contact = payload.contact ?? payload;
+  if (contact?.id) return contact.id;
+  throw new Error("No se pudo crear contacto");
+}
+
+// Two-step: crear conversacion + enviar template como mensaje
+async function sendTemplateMessage(
   contactId: number,
   templateName: string,
   language: string,
-  params: Record<string, string>
-): Promise<{ ok: boolean; error?: string }> {
-  const res = await fetch(
-    `${CHATWOOT_BASE}/api/v1/accounts/${CHATWOOT_ACCOUNT}/conversations`,
-    {
-      method: "POST",
-      headers: {
-        api_access_token: CHATWOOT_TOKEN,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        inbox_id: CHATWOOT_INBOX,
-        contact_id: contactId,
-        message: {
-          content: `Campaña: ${templateName}`,
-          template_params: {
-            name: templateName,
-            category: "MARKETING",
-            language,
-            processed_params: params,
-          },
-        },
-      }),
-    }
-  );
+  params: Record<string, string>,
+  content: string,
+): Promise<void> {
+  // Step 1: crear o encontrar conversacion
+  const convData = await chatwootPost("/conversations", {
+    inbox_id: CHATWOOT_INBOX,
+    contact_id: contactId,
+  });
+  const convId = convData.payload?.id ?? convData.id;
+  if (!convId) throw new Error("No se pudo crear conversacion");
 
-  if (!res.ok) {
-    const err = await res.text();
-    return { ok: false, error: err.slice(0, 200) };
-  }
-  return { ok: true };
+  // Step 2: enviar template como mensaje
+  await chatwootPost(`/conversations/${convId}/messages`, {
+    message_type: "outgoing",
+    content,
+    template_params: {
+      name: templateName,
+      category: "MARKETING",
+      language,
+      processed_params: params,
+    },
+  });
 }
 
-// POST — send campaign to list of patients
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -93,7 +86,8 @@ export async function POST(req: NextRequest) {
       template_name,
       template_language = "es_PE",
       patient_ids,
-      params_map, // { patientId: { nombre: "...", tratamiento: "..." } }
+      default_tratamiento,
+      campaign_name,
     } = body;
 
     if (!template_name || !patient_ids?.length) {
@@ -105,62 +99,114 @@ export async function POST(req: NextRequest) {
     // Fetch patients
     const { data: patients, error } = await (supabase as any)
       .from("pacientes")
-      .select("id, nombre, apellido, telefono")
+      .select("id, nombres, apellidos, telefono")
       .in("id", patient_ids);
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    // Crear registro de campana
+    const { data: campana } = await (supabase as any)
+      .from("campanas_wa")
+      .insert({
+        nombre: campaign_name || `Campaña ${template_name} — ${new Date().toLocaleDateString("es-PE")}`,
+        template_name,
+        template_lang: template_language,
+        total: patients.length,
+      })
+      .select("id")
+      .single();
+
+    const campanaId = campana?.id;
+
     const results: { id: string; nombre: string; status: string; error?: string }[] = [];
-    const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
+    let enviados = 0;
+    let fallidos = 0;
+    let omitidos = 0;
 
     for (const patient of patients) {
+      const fullName = [patient.nombres, patient.apellidos].filter(Boolean).join(" ");
       const phone = normalizePhone(patient.telefono);
+
       if (!phone) {
-        results.push({ id: patient.id, nombre: patient.nombre, status: "skipped", error: "Sin telefono valido" });
+        results.push({ id: patient.id, nombre: fullName, status: "skipped", error: "Sin telefono valido" });
+        omitidos++;
+        if (campanaId) {
+          await (supabase as any).from("campana_destinatarios").insert({
+            campana_id: campanaId,
+            paciente_id: patient.id,
+            nombre: fullName,
+            telefono: patient.telefono,
+            estado: "omitido",
+            error_msg: "Sin telefono valido",
+          });
+        }
         continue;
       }
 
-      const fullName = [patient.nombre, patient.apellido].filter(Boolean).join(" ");
-      const contactId = await getOrCreateContact(phone, fullName);
-      if (!contactId) {
-        results.push({ id: patient.id, nombre: patient.nombre, status: "failed", error: "No se pudo crear contacto" });
-        continue;
+      try {
+        const contactId = await getOrCreateContact(phone, fullName);
+        const params = {
+          nombre: patient.nombres || fullName,
+          tratamiento: default_tratamiento || "tu tratamiento",
+        };
+        const content = `Hola ${params.nombre}, te escribimos de la Clinica Dra. Dennisse Arroyo sobre ${params.tratamiento}.`;
+
+        await sendTemplateMessage(contactId, template_name, template_language, params, content);
+
+        results.push({ id: patient.id, nombre: fullName, status: "sent" });
+        enviados++;
+        if (campanaId) {
+          await (supabase as any).from("campana_destinatarios").insert({
+            campana_id: campanaId,
+            paciente_id: patient.id,
+            nombre: fullName,
+            telefono: phone,
+            estado: "enviado",
+          });
+        }
+      } catch (err: any) {
+        results.push({ id: patient.id, nombre: fullName, status: "failed", error: err.message });
+        fallidos++;
+        if (campanaId) {
+          await (supabase as any).from("campana_destinatarios").insert({
+            campana_id: campanaId,
+            paciente_id: patient.id,
+            nombre: fullName,
+            telefono: phone,
+            estado: "fallido",
+            error_msg: (err.message || "").slice(0, 500),
+          });
+        }
       }
 
-      // Build params — use patient-specific params if provided, otherwise defaults
-      const patientParams = params_map?.[patient.id] || {
-        nombre: patient.nombre,
-        tratamiento: body.default_tratamiento || "tu tratamiento",
-      };
-
-      const { ok, error: sendErr } = await sendTemplate(contactId, template_name, template_language, patientParams);
-      results.push({
-        id: patient.id,
-        nombre: patient.nombre,
-        status: ok ? "sent" : "failed",
-        error: sendErr,
-      });
-
-      // Log to audit
-      await (supabase as any).from("audit_log").insert({
-        accion: "campaña_wa",
-        tabla: "pacientes",
-        registro_id: patient.id,
-        descripcion: `Campaña ${template_name} → ${fullName} (${phone}): ${ok ? "enviado" : "fallido"}`,
-        usuario_id: null,
-      });
-
-      // Delay between sends to avoid rate limiting
-      await delay(800);
+      // Delay entre envios para evitar rate limiting de Meta
+      await new Promise(r => setTimeout(r, 800));
     }
 
-    const sent = results.filter(r => r.status === "sent").length;
-    const failed = results.filter(r => r.status === "failed").length;
-    const skipped = results.filter(r => r.status === "skipped").length;
+    // Actualizar totales y costo de la campana
+    if (campanaId) {
+      await (supabase as any)
+        .from("campanas_wa")
+        .update({
+          enviados,
+          fallidos,
+          omitidos,
+          costo_estimado: enviados * COSTO_POR_MENSAJE_USD,
+        })
+        .eq("id", campanaId);
+    }
 
-    return NextResponse.json({ sent, failed, skipped, total: results.length, results });
+    return NextResponse.json({
+      sent: enviados,
+      failed: fallidos,
+      skipped: omitidos,
+      total: results.length,
+      costo_estimado_usd: +(enviados * COSTO_POR_MENSAJE_USD).toFixed(4),
+      campana_id: campanaId,
+      results,
+    });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }

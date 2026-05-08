@@ -507,19 +507,27 @@ function TabRecordatorios() {
         </div>
       </div>
 
-      {/* Info del servicio */}
-      <div className="card-premium p-4 border-l-2 border-l-primary/40 flex items-start gap-3">
-        <Bell className="w-4 h-4 text-primary shrink-0 mt-0.5" />
-        <div>
-          <p className="text-xs font-semibold text-foreground">Servicio de recordatorios automáticos</p>
-          <p className="text-xs text-muted-foreground leading-relaxed mt-0.5">
-            El servicio Python en Railway consulta esta tabla diariamente a las{" "}
-            <strong className="text-foreground">9:00 AM</strong> y envía los mensajes con estado{" "}
-            <code className="text-[10px] bg-muted px-1 rounded font-mono text-amber-600">pendiente</code> cuya{" "}
-            <code className="text-[10px] bg-muted px-1 rounded font-mono">fecha_programada</code> sea hoy o anterior.
-            Los recordatorios se generan automáticamente en 3 momentos:{" "}
-            <strong>30 días antes</strong>, <strong>7 días antes</strong> y el <strong>día del vencimiento</strong>.
-          </p>
+      {/* Gasto estimado + info */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="card-premium p-4 border-l-2 border-l-amber-400 flex items-start gap-3">
+          <span className="text-amber-500 font-bold text-lg shrink-0">$</span>
+          <div>
+            <p className="text-xs font-semibold text-foreground">Gasto estimado en recordatorios</p>
+            <p className="font-serif text-xl font-semibold text-amber-600 mt-1">
+              ${(stats.enviados * 0.0541).toFixed(2)} <span className="text-xs font-normal text-muted-foreground">USD</span>
+            </p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">{stats.enviados + stats.respondidos} templates enviados · $0.0541/msg</p>
+          </div>
+        </div>
+        <div className="card-premium p-4 border-l-2 border-l-primary/40 flex items-start gap-3">
+          <Bell className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+          <div>
+            <p className="text-xs font-semibold text-foreground">Servicio automatico</p>
+            <p className="text-xs text-muted-foreground leading-relaxed mt-0.5">
+              Cron diario a las <strong className="text-foreground">9:00 AM</strong> · cooldown de 3 dias entre envios ·
+              recordatorios a los <strong>30 dias</strong>, <strong>7 dias</strong> y <strong>dia del vencimiento</strong>
+            </p>
+          </div>
         </div>
       </div>
 
