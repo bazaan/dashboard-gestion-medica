@@ -53,9 +53,9 @@ def _group_recordatorios(recordatorios: list[db.Recordatorio]) -> list[tuple[lis
 def run_batch(cfg: Config) -> dict:
     """
     Ejecuta un ciclo completo de envío de recordatorios.
-    Retorna stats: {"total": n, "enviados": n, "fallidos": n, "omitidos": n}
+    Retorna stats: {"total": n, "enviados": n, "fallidos": n, "omitidos": n, "cooldown": n}
     """
-    stats = {"total": 0, "enviados": 0, "fallidos": 0, "omitidos": 0}
+    stats = {"total": 0, "enviados": 0, "fallidos": 0, "omitidos": 0, "cooldown": 0}
 
     recordatorios = db.get_pending_recordatorios(cfg)
     stats["total"] = len(recordatorios)
@@ -63,6 +63,14 @@ def run_batch(cfg: Config) -> dict:
     if not recordatorios:
         logger.info("Sin recordatorios pendientes para hoy.")
         return stats
+
+    # Cooldown: obtener pacientes que ya recibieron mensaje recientemente
+    recently_sent = db.get_recently_sent_patient_ids(cfg)
+    if recently_sent:
+        logger.info(
+            "Cooldown activo (%d dias): %d paciente(s) ya recibieron mensaje reciente",
+            cfg.cooldown_days, len(recently_sent),
+        )
 
     grouped = _group_recordatorios(recordatorios)
     logger.info(
@@ -74,6 +82,15 @@ def run_batch(cfg: Config) -> dict:
         rep = recs[0]  # representante del grupo
         nombre_display = f"{rep.nombres} {rep.apellidos}".strip() or "Paciente"
 
+        # Cooldown check: si ya se le envio recientemente, saltar (queda pendiente)
+        if rep.paciente_id in recently_sent:
+            logger.info(
+                "Cooldown: omitiendo %s (%s) — ya recibio mensaje en los ultimos %d dias",
+                nombre_display, rep.paciente_id[:8], cfg.cooldown_days,
+            )
+            stats["cooldown"] += len(recs)
+            continue
+
         message = templates.get_message(
             cfg=cfg,
             tipo_recordatorio=rep.tipo_recordatorio,
@@ -83,7 +100,7 @@ def run_batch(cfg: Config) -> dict:
         )
 
         try:
-            chatwoot.send_reminder(
+            conv_id = chatwoot.send_reminder(
                 cfg=cfg,
                 paciente_id=rep.paciente_id,
                 nombres=rep.nombres,
@@ -95,8 +112,10 @@ def run_batch(cfg: Config) -> dict:
 
             if not cfg.dry_run:
                 for r in recs:
-                    db.mark_enviado(cfg, r.id)
+                    db.mark_enviado(cfg, r.id, conversation_id=conv_id)
 
+            # Agregar al set de cooldown para este batch
+            recently_sent.add(rep.paciente_id)
             stats["enviados"] += len(recs)
 
         except ValueError as exc:
@@ -123,7 +142,7 @@ def run_batch(cfg: Config) -> dict:
             time.sleep(cfg.delay_between_sends)
 
     logger.info(
-        "Ciclo completado — enviados: %d | fallidos: %d | omitidos: %d | total: %d | mensajes: %d",
-        stats["enviados"], stats["fallidos"], stats["omitidos"], stats["total"], len(grouped),
+        "Ciclo completado — enviados: %d | fallidos: %d | omitidos: %d | cooldown: %d | total: %d | mensajes: %d",
+        stats["enviados"], stats["fallidos"], stats["omitidos"], stats["cooldown"], stats["total"], len(grouped),
     )
     return stats

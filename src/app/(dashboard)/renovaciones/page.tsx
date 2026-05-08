@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   Bell, RefreshCw, AlertTriangle, Clock, CheckCircle2,
   Infinity, Phone, Search, ChevronRight, Loader2, Calendar,
-  MessageCircle, Send, XCircle, Hourglass,
+  MessageCircle, Send, XCircle, Hourglass, MessageSquareReply,
 } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
@@ -19,10 +19,12 @@ import { CATEGORIA_LABELS } from "@/types/database.types";
 
 type Tab       = "seguimientos" | "recordatorios";
 type Filtro    = "todos" | "vencido" | "proximo_vencer" | "vigente" | "permanente";
-type FiltroRec = "todos" | "pendiente" | "enviado" | "fallido";
+type FiltroRec = "todos" | "pendiente" | "enviado" | "respondido" | "fallido";
 
 type RecordatorioConPaciente = RecordatorioLog & {
   pacientes: Pick<Paciente, "nombres" | "apellidos" | "telefono"> | null;
+  respondio_at?: string | null;
+  error_msg?: string | null;
 };
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -60,9 +62,10 @@ const TIPO_REC_LABEL: Record<string, string> = {
 };
 
 const ESTADO_REC_BADGE: Record<string, string> = {
-  pendiente: "bg-amber-50 text-amber-700 border-amber-200",
-  enviado:   "bg-emerald-50 text-emerald-700 border-emerald-200",
-  fallido:   "bg-red-50 text-red-600 border-red-200",
+  pendiente:  "bg-amber-50 text-amber-700 border-amber-200",
+  enviado:    "bg-emerald-50 text-emerald-700 border-emerald-200",
+  respondido: "bg-blue-50 text-blue-700 border-blue-200",
+  fallido:    "bg-red-50 text-red-600 border-red-200",
 };
 
 // ─── Hooks ───────────────────────────────────────────────────────────────────
@@ -443,6 +446,7 @@ function TabRecordatorios() {
   const stats = {
     pendientesHoy: todos.filter((r) => r.estado === "pendiente" && isHoyOPasado(r.fecha_programada)).length,
     enviados:      todos.filter((r) => r.estado === "enviado").length,
+    respondidos:   todos.filter((r) => r.estado === "respondido").length,
     fallidos:      todos.filter((r) => r.estado === "fallido").length,
   };
 
@@ -456,23 +460,24 @@ function TabRecordatorios() {
   });
 
   const FILTRO_REC_CONFIG: Record<FiltroRec, { label: string; icon: React.ElementType; color: string }> = {
-    todos:     { label: "Todos",     icon: RefreshCw,     color: "text-foreground"  },
-    pendiente: { label: "Pendiente", icon: Hourglass,     color: "text-amber-500"   },
-    enviado:   { label: "Enviado",   icon: Send,          color: "text-emerald-500" },
-    fallido:   { label: "Fallido",   icon: XCircle,       color: "text-red-500"     },
+    todos:      { label: "Todos",      icon: RefreshCw,          color: "text-foreground"  },
+    pendiente:  { label: "Pendiente",  icon: Hourglass,          color: "text-amber-500"   },
+    enviado:    { label: "Enviado",    icon: Send,               color: "text-emerald-500" },
+    respondido: { label: "Respondido", icon: MessageSquareReply, color: "text-blue-500"    },
+    fallido:    { label: "Fallido",    icon: XCircle,            color: "text-red-500"     },
   };
 
   return (
     <div className="space-y-6">
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="card-premium p-4 border-l-2 border-l-amber-400">
           <div className="flex items-center gap-2 mb-1">
             <Hourglass className="w-4 h-4 text-amber-400" />
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Por enviar hoy</p>
           </div>
           <p className="font-serif text-3xl font-semibold text-amber-500">{stats.pendientesHoy}</p>
-          <p className="text-xs text-muted-foreground mt-1">pendientes · fecha ≤ hoy</p>
+          <p className="text-xs text-muted-foreground mt-1">pendientes</p>
         </div>
         <div className="card-premium p-4 border-l-2 border-l-emerald-400">
           <div className="flex items-center gap-2 mb-1">
@@ -481,6 +486,14 @@ function TabRecordatorios() {
           </div>
           <p className="font-serif text-3xl font-semibold text-emerald-600">{stats.enviados}</p>
           <p className="text-xs text-muted-foreground mt-1">mensajes entregados</p>
+        </div>
+        <div className="card-premium p-4 border-l-2 border-l-blue-400">
+          <div className="flex items-center gap-2 mb-1">
+            <MessageSquareReply className="w-4 h-4 text-blue-400" />
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Respondidos</p>
+          </div>
+          <p className="font-serif text-3xl font-semibold text-blue-600">{stats.respondidos}</p>
+          <p className="text-xs text-muted-foreground mt-1">pacientes respondieron</p>
         </div>
         <div className="card-premium p-4 border-l-2 border-l-red-400">
           <div className="flex items-center gap-2 mb-1">
@@ -588,26 +601,39 @@ function TabRecordatorios() {
                 const nombre = r.pacientes
                   ? `${r.pacientes.nombres} ${r.pacientes.apellidos}`
                   : "—";
+                const telefono = r.pacientes?.telefono ?? "";
                 const isUrgente = r.estado === "pendiente" && isHoyOPasado(r.fecha_programada);
+                const isRespondido = r.estado === "respondido";
+                const extended = r as RecordatorioConPaciente & { error_msg?: string; respondio_at?: string };
                 return (
-                  <div key={r.id} className={`px-4 py-4 ${isUrgente ? "bg-amber-50/30" : ""}`}>
+                  <div key={r.id} className={`px-4 py-4 ${isUrgente ? "bg-amber-50/30" : isRespondido ? "bg-blue-50/30" : ""}`}>
                     <div className="flex items-start justify-between gap-3 mb-2">
                       <div>
                         <p className="font-semibold text-sm text-foreground">{nombre}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
-                          <Phone className="w-3 h-3" />{r.pacientes?.telefono ?? "—"}
-                        </p>
+                        {telefono ? (
+                          <a
+                            href={`https://wa.me/51${telefono.replace(/\D/g, "").slice(-9)}`}
+                            target="_blank" rel="noopener noreferrer"
+                            className="text-xs text-emerald-600 mt-0.5 flex items-center gap-1 hover:underline"
+                          >
+                            <Phone className="w-3 h-3" />{telefono}
+                          </a>
+                        ) : (
+                          <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
+                            <Phone className="w-3 h-3" />—
+                          </p>
+                        )}
                       </div>
                       <div className="flex flex-col items-end gap-1">
                         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border ${TIPO_REC_BADGE[r.tipo]}`}>
                           {TIPO_REC_LABEL[r.tipo]}
                         </span>
                         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border ${ESTADO_REC_BADGE[r.estado]}`}>
-                          {r.estado}
+                          {r.estado === "respondido" ? "respondido" : r.estado}
                         </span>
                       </div>
                     </div>
-                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                    <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
                       <span className="flex items-center gap-1">
                         <Calendar className="w-3 h-3" /> Programado: {formatFecha(r.fecha_programada)}
                       </span>
@@ -616,10 +642,15 @@ function TabRecordatorios() {
                           <Send className="w-3 h-3" /> {formatFecha(r.fecha_enviada)}
                         </span>
                       )}
+                      {extended.respondio_at && (
+                        <span className="flex items-center gap-1 text-blue-600 font-semibold">
+                          <MessageSquareReply className="w-3 h-3" /> Respondio: {formatFecha(extended.respondio_at)}
+                        </span>
+                      )}
                     </div>
-                    {r.estado === "fallido" && (r as RecordatorioConPaciente & { error_msg?: string }).error_msg && (
+                    {r.estado === "fallido" && extended.error_msg && (
                       <p className="mt-2 text-[10px] text-red-500 bg-red-50 rounded px-2 py-1 font-mono truncate">
-                        {(r as RecordatorioConPaciente & { error_msg?: string }).error_msg}
+                        {extended.error_msg}
                       </p>
                     )}
                   </div>
@@ -637,7 +668,7 @@ function TabRecordatorios() {
                     <th className="px-6 py-3.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Programado</th>
                     <th className="px-6 py-3.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Enviado</th>
                     <th className="px-6 py-3.5 text-center text-xs font-semibold text-muted-foreground uppercase tracking-wider">Estado</th>
-                    <th className="px-6 py-3.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider hidden xl:table-cell">Error</th>
+                    <th className="px-6 py-3.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider hidden xl:table-cell">Detalle</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/60">
@@ -645,15 +676,31 @@ function TabRecordatorios() {
                     const nombre = r.pacientes
                       ? `${r.pacientes.nombres} ${r.pacientes.apellidos}`
                       : "—";
+                    const telefono = r.pacientes?.telefono ?? "";
                     const isUrgente = r.estado === "pendiente" && r.fecha_programada <= today;
-                    const errorMsg = (r as RecordatorioConPaciente & { error_msg?: string }).error_msg;
+                    const isRespondido = r.estado === "respondido";
+                    const extended = r as RecordatorioConPaciente & { error_msg?: string; respondio_at?: string };
                     return (
-                      <tr key={r.id} className={`transition-colors group ${isUrgente ? "bg-amber-50/20 hover:bg-amber-50/40" : "hover:bg-muted/20"}`}>
+                      <tr key={r.id} className={`transition-colors group ${
+                        isUrgente ? "bg-amber-50/20 hover:bg-amber-50/40" :
+                        isRespondido ? "bg-blue-50/10 hover:bg-blue-50/20" :
+                        "hover:bg-muted/20"
+                      }`}>
                         <td className="px-6 py-4">
                           <p className="font-semibold text-sm text-foreground">{nombre}</p>
-                          <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-                            <Phone className="w-3 h-3" />{r.pacientes?.telefono ?? "—"}
-                          </p>
+                          {telefono ? (
+                            <a
+                              href={`https://wa.me/51${telefono.replace(/\D/g, "").slice(-9)}`}
+                              target="_blank" rel="noopener noreferrer"
+                              className="text-xs text-emerald-600 flex items-center gap-1 mt-0.5 hover:underline"
+                            >
+                              <Phone className="w-3 h-3" />{telefono}
+                            </a>
+                          ) : (
+                            <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                              <Phone className="w-3 h-3" />—
+                            </p>
+                          )}
                         </td>
                         <td className="px-6 py-4">
                           <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${TIPO_REC_BADGE[r.tipo]}`}>
@@ -675,12 +722,25 @@ function TabRecordatorios() {
                           <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${ESTADO_REC_BADGE[r.estado]}`}>
                             {r.estado}
                           </span>
+                          {extended.respondio_at && (
+                            <p className="text-[10px] text-blue-600 mt-1">
+                              {formatFecha(extended.respondio_at)}
+                            </p>
+                          )}
                         </td>
                         <td className="px-6 py-4 hidden xl:table-cell">
-                          {errorMsg ? (
-                            <p className="text-[11px] text-red-500 font-mono truncate max-w-[200px]" title={errorMsg}>
-                              {errorMsg}
+                          {extended.error_msg ? (
+                            <p className="text-[11px] text-red-500 font-mono truncate max-w-[200px]" title={extended.error_msg}>
+                              {extended.error_msg}
                             </p>
+                          ) : isRespondido && telefono ? (
+                            <a
+                              href={`https://wa.me/51${telefono.replace(/\D/g, "").slice(-9)}`}
+                              target="_blank" rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 text-xs font-medium hover:bg-blue-100 transition-colors"
+                            >
+                              <MessageSquareReply className="w-3.5 h-3.5" /> Contactar
+                            </a>
                           ) : (
                             <span className="text-muted-foreground/40">—</span>
                           )}

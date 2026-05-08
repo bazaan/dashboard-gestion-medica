@@ -220,9 +220,10 @@ def send_reminder(
     celular_raw: str,
     message: dict,
     dry_run: bool = False,
-) -> None:
+) -> Optional[int]:
     """
     Envía un recordatorio de WhatsApp a un paciente.
+    Retorna el conversation_id de Chatwoot (para tracking de respuestas).
 
     Lanza excepción si algo falla (el caller decide si marca fallido).
     En dry_run solo loguea sin hacer ninguna llamada HTTP.
@@ -238,7 +239,7 @@ def send_reminder(
             phone_e164[:-4] + "****",
             message.get("template_name"),
         )
-        return
+        return None
 
     with _build_http_client(cfg) as client:
         contact_id = _get_or_create_contact(client, phone_e164, nombres, apellidos)
@@ -251,3 +252,4 @@ def send_reminder(
         conv_id,
         message.get("template_name"),
     )
+    return conv_id

@@ -22,6 +22,9 @@ from typing import Optional
 
 import httpx
 
+from config import Config
+import db
+
 logger = logging.getLogger(__name__)
 
 # Número oficial de la clínica para agendar citas
@@ -137,6 +140,18 @@ def handle_webhook(payload: dict) -> dict:
 
     if success:
         _responded_conversations.add(conv_id)
+
+        # Marcar recordatorio como respondido en la DB
+        try:
+            cfg = Config.from_env()
+            paciente_id = db.mark_respondido(cfg, str(conv_id))
+            if paciente_id:
+                logger.info("Recordatorio marcado respondido para paciente=%s via conv=%d", paciente_id, conv_id)
+            else:
+                logger.debug("No se encontro recordatorio para conv=%d (puede ser conversacion nueva)", conv_id)
+        except Exception as exc:
+            logger.warning("Error marcando respondido para conv=%d: %s", conv_id, exc)
+
         return {"status": "ok", "conversation_id": conv_id}
 
     return {"status": "error", "reason": "failed to send reply"}

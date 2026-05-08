@@ -34,6 +34,7 @@ class Config:
     cron_hour: int
     cron_minute: int
     log_level: str
+    cooldown_days: int  # Min dias entre envios al mismo paciente
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -90,4 +91,5 @@ class Config:
             cron_hour=int(optional("CRON_HOUR", "9")),
             cron_minute=int(optional("CRON_MINUTE", "0")),
             log_level=optional("LOG_LEVEL", "INFO").upper(),
+            cooldown_days=int(optional("COOLDOWN_DAYS", "3")),
         )

@@ -18,7 +18,7 @@ export type AnguloFoto      = 'frontal' | 'lateral_izq' | 'lateral_der' | 'super
 export type TipoPiel        = 'seca' | 'grasa' | 'mixta' | 'normal' | 'sensible'
 export type EstadoSeguimiento = 'vigente' | 'proximo_vencer' | 'vencido' | 'renovado' | 'permanente'
 export type TipoRecordatorio  = '30_dias' | '7_dias' | 'vencimiento'
-export type EstadoRecordatorio = 'pendiente' | 'enviado' | 'fallido'
+export type EstadoRecordatorio = 'pendiente' | 'enviado' | 'respondido' | 'fallido'
 export type EstadoPermiso      = 'pendiente' | 'aprobado' | 'rechazado'
 
 export type TratamientoCategoria =
@@ -200,6 +200,7 @@ export interface Database {
           estado: EstadoRecordatorio; chatwoot_conversation_id: string | null
           error_msg: string | null
           fecha_programada: string; fecha_enviada: string | null
+          respondio_at: string | null
           created_at: string
         }
         Insert: Omit<Database['public']['Tables']['recordatorios_log']['Row'], 'id' | 'created_at'>
