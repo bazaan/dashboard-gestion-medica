@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   Bell, RefreshCw, AlertTriangle, Clock, CheckCircle2,
   Infinity, Phone, Search, ChevronRight, Loader2, Calendar,
-  MessageCircle, Send, XCircle, Hourglass, MessageSquareReply,
+  MessageCircle, Send, XCircle, Hourglass, MessageSquareReply, DollarSign,
 } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
@@ -507,29 +507,102 @@ function TabRecordatorios() {
         </div>
       </div>
 
-      {/* Gasto estimado + info */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="card-premium p-4 border-l-2 border-l-amber-400 flex items-start gap-3">
-          <span className="text-amber-500 font-bold text-lg shrink-0">$</span>
-          <div>
-            <p className="text-xs font-semibold text-foreground">Gasto estimado en recordatorios</p>
-            <p className="font-serif text-xl font-semibold text-amber-600 mt-1">
-              ${(stats.enviados * 0.0541).toFixed(2)} <span className="text-xs font-normal text-muted-foreground">USD</span>
+      {/* Costos de Renovaciones */}
+      {(() => {
+        const COSTO_MSG = 0.07;
+        const enviados = todos.filter((r) => r.estado === "enviado" || r.estado === "respondido");
+        const totalEnviados = enviados.length;
+        const gastoTotal = totalEnviados * COSTO_MSG;
+
+        const porTipo: Record<string, number> = {};
+        enviados.forEach((r) => {
+          porTipo[r.tipo] = (porTipo[r.tipo] || 0) + 1;
+        });
+
+        const porMes: Record<string, number> = {};
+        enviados.forEach((r) => {
+          if (r.fecha_enviada) {
+            const mes = new Date(r.fecha_enviada).toLocaleDateString("es-PE", { month: "short", year: "numeric" });
+            porMes[mes] = (porMes[mes] || 0) + 1;
+          }
+        });
+
+        return (
+          <div className="space-y-4">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+              <DollarSign className="w-3.5 h-3.5" /> Costos de Recordatorios
             </p>
-            <p className="text-[10px] text-muted-foreground mt-0.5">{stats.enviados + stats.respondidos} templates enviados · $0.0541/msg</p>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {/* Gasto total */}
+              <div className="card-premium p-4 border-l-2 border-l-primary">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Gasto Total</p>
+                <p className="font-serif text-2xl font-semibold text-primary">${gastoTotal.toFixed(2)}</p>
+                <p className="text-[10px] text-muted-foreground mt-1">{totalEnviados} mensajes · $0.07/msg</p>
+              </div>
+
+              {/* Por tipo de plantilla */}
+              {(["30_dias", "7_dias", "vencimiento"] as const).map((tipo) => {
+                const count = porTipo[tipo] || 0;
+                const costo = count * COSTO_MSG;
+                const colors = {
+                  "30_dias": { border: "border-l-blue-400", text: "text-blue-600" },
+                  "7_dias": { border: "border-l-amber-400", text: "text-amber-600" },
+                  "vencimiento": { border: "border-l-red-400", text: "text-red-600" },
+                };
+                return (
+                  <div key={tipo} className={`card-premium p-4 border-l-2 ${colors[tipo].border}`}>
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+                      {TIPO_REC_LABEL[tipo]}
+                    </p>
+                    <p className={`font-serif text-2xl font-semibold ${colors[tipo].text}`}>${costo.toFixed(2)}</p>
+                    <p className="text-[10px] text-muted-foreground mt-1">{count} enviados</p>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Desglose por mes */}
+            {Object.keys(porMes).length > 0 && (
+              <div className="card-premium p-4">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Gasto por mes</p>
+                <div className="space-y-2">
+                  {Object.entries(porMes).map(([mes, count]) => {
+                    const costMes = count * COSTO_MSG;
+                    const pct = totalEnviados > 0 ? (count / totalEnviados) * 100 : 0;
+                    return (
+                      <div key={mes} className="flex items-center gap-3">
+                        <span className="text-xs font-medium text-foreground w-20 capitalize">{mes}</span>
+                        <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-primary rounded-full transition-all"
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                        <span className="text-xs font-semibold text-foreground w-16 text-right">${costMes.toFixed(2)}</span>
+                        <span className="text-[10px] text-muted-foreground w-12 text-right">{count} msg</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Info del servicio */}
+            <div className="card-premium p-4 border-l-2 border-l-primary/40 flex items-start gap-3">
+              <Bell className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+              <div>
+                <p className="text-xs font-semibold text-foreground">Servicio automatico</p>
+                <p className="text-xs text-muted-foreground leading-relaxed mt-0.5">
+                  Cron diario a las <strong className="text-foreground">9:00 AM</strong> · cooldown de 3 dias entre envios ·
+                  recordatorios a los <strong>30 dias</strong>, <strong>7 dias</strong> y <strong>dia del vencimiento</strong> ·
+                  categoria <strong>MARKETING</strong> · $0.07 USD/msg
+                </p>
+              </div>
+            </div>
           </div>
-        </div>
-        <div className="card-premium p-4 border-l-2 border-l-primary/40 flex items-start gap-3">
-          <Bell className="w-4 h-4 text-primary shrink-0 mt-0.5" />
-          <div>
-            <p className="text-xs font-semibold text-foreground">Servicio automatico</p>
-            <p className="text-xs text-muted-foreground leading-relaxed mt-0.5">
-              Cron diario a las <strong className="text-foreground">9:00 AM</strong> · cooldown de 3 dias entre envios ·
-              recordatorios a los <strong>30 dias</strong>, <strong>7 dias</strong> y <strong>dia del vencimiento</strong>
-            </p>
-          </div>
-        </div>
-      </div>
+        );
+      })()}
 
       {/* Filtros */}
       <div className="card-premium">

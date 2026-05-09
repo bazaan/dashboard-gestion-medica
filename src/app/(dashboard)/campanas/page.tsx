@@ -96,7 +96,7 @@ function formatFecha(fecha: string) {
 }
 
 // Costo por plantilla MARKETING Peru (USD)
-const COSTO_UNITARIO_USD = 0.0541;
+const COSTO_UNITARIO_USD = 0.07;
 
 // ── Tab: Nueva Campana ──────────────────────────────────────────────────────
 

@@ -6,8 +6,8 @@ const CHATWOOT_TOKEN = process.env.CHATWOOT_API_TOKEN || "xBsW4FE3FCZdZbgXgdjrHf
 const CHATWOOT_ACCOUNT = Number(process.env.CHATWOOT_ACCOUNT_ID || "4");
 const CHATWOOT_INBOX = Number(process.env.CHATWOOT_WA_INBOX_ID || "65");
 
-// Costo por mensaje de template MARKETING en Peru (USD) — Meta pricing 2024/2025
-const COSTO_POR_MENSAJE_USD = 0.0541;
+// Costo por mensaje de template MARKETING en Peru (USD)
+const COSTO_POR_MENSAJE_USD = 0.07;
 
 function normalizePhone(phone: string): string | null {
   if (!phone) return null;
