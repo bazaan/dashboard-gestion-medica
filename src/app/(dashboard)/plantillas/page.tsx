@@ -7,6 +7,7 @@ import {
   Plus, Trash2, RefreshCw, Send, Loader2, X,
 } from "lucide-react";
 import { toast } from "sonner";
+import { RoleGuard } from "@/components/RoleGuard";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 type MetaTemplate = {
@@ -507,6 +508,7 @@ export default function PlantillasPage() {
   const other = templates.filter(t => !["APPROVED", "PENDING", "REJECTED"].includes(t.status));
 
   return (
+    <RoleGuard allowed={["admin", "doctor"]}>
     <div className="min-h-full bg-background">
       <header className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b border-border">
         <div className="flex items-center justify-between px-4 md:px-8 h-14 md:h-16">
@@ -597,5 +599,6 @@ export default function PlantillasPage() {
         onCreated={fetchTemplates}
       />
     </div>
+    </RoleGuard>
   );
 }

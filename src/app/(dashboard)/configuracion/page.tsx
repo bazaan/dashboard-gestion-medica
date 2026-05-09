@@ -8,6 +8,7 @@ import {
   AlertTriangle, FileText, Eye, EyeOff,
 } from "lucide-react";
 import { useUsuarios, useActualizarUsuario, useDesactivarUsuario, useAuditLog } from "@/lib/hooks/useConfiguracion";
+import { RoleGuard } from "@/components/RoleGuard";
 import type { Profile, UserRole } from "@/types/database.types";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -394,6 +395,7 @@ function AuditSection() {
 // ── Página principal ──────────────────────────────────────────
 export default function ConfiguracionPage() {
   return (
+    <RoleGuard allowed={["admin"]}>
     <div className="min-h-full bg-background">
       {/* Header */}
       <header className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b border-border">
@@ -439,5 +441,6 @@ export default function ConfiguracionPage() {
         </div>
       </div>
     </div>
+    </RoleGuard>
   );
 }

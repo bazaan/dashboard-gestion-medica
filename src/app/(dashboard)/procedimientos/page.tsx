@@ -7,6 +7,7 @@ import {
   Loader2, AlertTriangle,
 } from "lucide-react";
 import { ProcedimientoDrawer } from "@/components/procedimientos/ProcedimientoDrawer";
+import { RoleGuard } from "@/components/RoleGuard";
 import { useProcedimientos, useEliminarProcedimiento } from "@/lib/hooks/useProcedimientos";
 import { CATEGORIA_LABELS, type Tratamiento, type TratamientoCategoria } from "@/types/database.types";
 
@@ -239,6 +240,7 @@ export default function ProcedimientosPage() {
   }
 
   return (
+    <RoleGuard allowed={["admin", "doctor"]}>
     <div className="min-h-full bg-background">
 
       <ProcedimientoDrawer
@@ -343,5 +345,6 @@ export default function ProcedimientosPage() {
         </div>
       </div>
     </div>
+    </RoleGuard>
   );
 }
