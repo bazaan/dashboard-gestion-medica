@@ -58,24 +58,28 @@ export async function POST(req: NextRequest) {
       components.push(headerComp);
     }
 
-    // Extract variables like {{nombre}}, {{tratamiento}} from body
-    const varMatches = body_text.match(/\{\{(\w+)\}\}/g) || [];
-    const uniqueVars = [...new Set(varMatches.map((v: string) => v.replace(/[{}]/g, "")))] as string[];
-
-    // Meta requires example values when variables are present
+    // Meta API requires positional variables {{1}}, {{2}}, not named ones
+    // Convert {{nombre}} → {{1}}, {{tratamiento}} → {{2}}, etc.
     const EXAMPLE_VALUES: Record<string, string> = {
       nombre: "Maria Garcia",
       tratamiento: "Rejuran",
     };
 
+    const seen: string[] = [];
+    const bodyForMeta = body_text.replace(/\{\{(\w+)\}\}/g, (_: string, varName: string) => {
+      let idx = seen.indexOf(varName);
+      if (idx === -1) { seen.push(varName); idx = seen.length - 1; }
+      return `{{${idx + 1}}}`;
+    });
+
     const bodyComp: any = {
       type: "BODY",
-      text: body_text,
+      text: bodyForMeta,
     };
 
-    if (uniqueVars.length > 0) {
+    if (seen.length > 0) {
       bodyComp.example = {
-        body_text: [uniqueVars.map((v: string) => EXAMPLE_VALUES[v] || `ejemplo_${v}`)],
+        body_text: [seen.map(v => EXAMPLE_VALUES[v] || `ejemplo_${v}`)],
       };
     }
 
@@ -111,8 +115,10 @@ export async function POST(req: NextRequest) {
     });
 
     const data = await res.json();
+    console.log("[META] Payload sent:", JSON.stringify(payload, null, 2));
+    console.log("[META] Response:", JSON.stringify(data, null, 2));
     if (data.error) {
-      return NextResponse.json({ error: data.error.message, details: data.error }, { status: 400 });
+      return NextResponse.json({ error: data.error.message, details: data.error, payload_sent: payload }, { status: 400 });
     }
 
     return NextResponse.json({ success: true, template: data });
