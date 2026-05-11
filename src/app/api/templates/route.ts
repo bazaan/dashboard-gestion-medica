@@ -38,18 +38,30 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { name, language, category, body_text, buttons } = body;
+    const { name, language, category, body_text, buttons, header } = body;
 
     if (!name || !body_text) {
       return NextResponse.json({ error: "name and body_text are required" }, { status: 400 });
     }
 
-    const components: any[] = [
-      {
-        type: "BODY",
-        text: body_text,
-      },
-    ];
+    const components: any[] = [];
+
+    // Header component (TEXT, IMAGE, VIDEO, DOCUMENT)
+    if (header && header.format && header.format !== "NONE") {
+      const headerComp: any = { type: "HEADER", format: header.format };
+      if (header.format === "TEXT") {
+        headerComp.text = header.text || "";
+      } else if (header.handle) {
+        // IMAGE, VIDEO, DOCUMENT — need a handle from upload
+        headerComp.example = { header_handle: [header.handle] };
+      }
+      components.push(headerComp);
+    }
+
+    components.push({
+      type: "BODY",
+      text: body_text,
+    });
 
     if (buttons && buttons.length > 0) {
       components.push({

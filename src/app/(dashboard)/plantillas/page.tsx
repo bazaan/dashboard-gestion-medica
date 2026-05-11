@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import {
   MessageSquareText, Copy, Check, ChevronDown, ChevronUp,
   Info, Clock, AlertTriangle, CheckCircle2, Smartphone, Phone,
-  Plus, Trash2, RefreshCw, Send, Loader2, X,
+  Plus, Trash2, RefreshCw, Send, Loader2, X, Image, Video, FileText, Type,
 } from "lucide-react";
 import { toast } from "sonner";
 import { RoleGuard } from "@/components/RoleGuard";
@@ -325,6 +325,11 @@ function CrearPlantillaDialog({ open, onClose, onCreated }: { open: boolean; onC
   const [language, setLanguage] = useState("es_PE");
   const [bodyText, setBodyText] = useState("");
   const [buttons, setButtons] = useState<TemplateButton[]>([]);
+  const [headerFormat, setHeaderFormat] = useState<"NONE" | "TEXT" | "IMAGE" | "VIDEO" | "DOCUMENT">("NONE");
+  const [headerText, setHeaderText] = useState("");
+  const [headerFile, setHeaderFile] = useState<File | null>(null);
+  const [headerHandle, setHeaderHandle] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [previewVars, setPreviewVars] = useState<Record<string, string>>(() => {
     const v: Record<string, string> = {};
@@ -379,10 +384,25 @@ function CrearPlantillaDialog({ open, onClose, onCreated }: { open: boolean; onC
     setButtons(prev => prev.filter((_, i) => i !== idx));
   }
 
+  async function uploadHeaderFile(file: File) {
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/staff/api/templates/upload", { method: "POST", body: fd });
+      const data = await res.json();
+      if (!res.ok) { toast.error(data.error || "Error al subir archivo"); return; }
+      setHeaderHandle(data.handle);
+      toast.success("Archivo subido correctamente");
+    } catch { toast.error("Error de conexion al subir archivo"); }
+    finally { setUploading(false); }
+  }
+
   function resetForm() {
     setStep("elegir");
     setName(""); setBodyText(""); setButtons([]);
     setCategory("MARKETING"); setLanguage("es_PE");
+    setHeaderFormat("NONE"); setHeaderText(""); setHeaderFile(null); setHeaderHandle(null);
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -408,10 +428,16 @@ function CrearPlantillaDialog({ open, onClose, onCreated }: { open: boolean; onC
           if (b.type === "PHONE_NUMBER") return { type: "PHONE_NUMBER", text: b.text, phone_number: b.phone };
           return { type: "QUICK_REPLY", text: b.text };
         });
+      const header: any = headerFormat !== "NONE" ? { format: headerFormat } : undefined;
+      if (header) {
+        if (headerFormat === "TEXT") header.text = headerText;
+        else if (headerHandle) header.handle = headerHandle;
+        else { toast.error("Sube el archivo del header primero"); setLoading(false); return; }
+      }
       const res = await fetch("/staff/api/templates", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, category, language, body_text: bodyText, buttons: apiButtons }),
+        body: JSON.stringify({ name, category, language, body_text: bodyText, buttons: apiButtons, header }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -531,6 +557,85 @@ function CrearPlantillaDialog({ open, onClose, onCreated }: { open: boolean; onC
                   <option value="en_US">English (US)</option>
                 </select>
               </div>
+            </div>
+
+            {/* Header */}
+            <div>
+              <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">
+                Encabezado (opcional)
+              </label>
+              <div className="flex items-center gap-2 mb-2">
+                {(["NONE", "TEXT", "IMAGE", "VIDEO", "DOCUMENT"] as const).map(fmt => (
+                  <button
+                    key={fmt}
+                    type="button"
+                    onClick={() => { setHeaderFormat(fmt); setHeaderFile(null); setHeaderHandle(null); setHeaderText(""); }}
+                    className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border transition-all ${headerFormat === fmt ? "border-primary bg-primary/10 text-primary" : "border-border hover:border-primary/30 text-muted-foreground hover:text-foreground"}`}
+                  >
+                    {fmt === "NONE" && <X className="w-3.5 h-3.5" />}
+                    {fmt === "TEXT" && <Type className="w-3.5 h-3.5" />}
+                    {fmt === "IMAGE" && <Image className="w-3.5 h-3.5" />}
+                    {fmt === "VIDEO" && <Video className="w-3.5 h-3.5" />}
+                    {fmt === "DOCUMENT" && <FileText className="w-3.5 h-3.5" />}
+                    {fmt === "NONE" ? "Ninguno" : fmt === "TEXT" ? "Texto" : fmt === "IMAGE" ? "Imagen" : fmt === "VIDEO" ? "Video" : "Documento"}
+                  </button>
+                ))}
+              </div>
+
+              {headerFormat === "TEXT" && (
+                <input
+                  value={headerText}
+                  onChange={e => setHeaderText(e.target.value)}
+                  placeholder="Texto del encabezado (ej. Clinica Dra. Arroyo)"
+                  maxLength={60}
+                  className="w-full px-3 py-2.5 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/25 focus:border-primary/40"
+                />
+              )}
+
+              {(headerFormat === "IMAGE" || headerFormat === "VIDEO" || headerFormat === "DOCUMENT") && (
+                <div className="flex items-center gap-3">
+                  <label className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border border-dashed cursor-pointer transition-all ${headerHandle ? "border-emerald-300 bg-emerald-50/50" : "border-border hover:border-primary/40 hover:bg-muted/30"}`}>
+                    {uploading ? (
+                      <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                    ) : headerHandle ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    ) : headerFormat === "IMAGE" ? (
+                      <Image className="w-4 h-4 text-muted-foreground" />
+                    ) : headerFormat === "VIDEO" ? (
+                      <Video className="w-4 h-4 text-muted-foreground" />
+                    ) : (
+                      <FileText className="w-4 h-4 text-muted-foreground" />
+                    )}
+                    <span className="text-xs font-semibold">
+                      {uploading ? "Subiendo..." : headerHandle ? (headerFile?.name || "Archivo subido") : `Seleccionar ${headerFormat === "IMAGE" ? "imagen" : headerFormat === "VIDEO" ? "video" : "documento"}`}
+                    </span>
+                    <input
+                      type="file"
+                      className="hidden"
+                      accept={headerFormat === "IMAGE" ? "image/jpeg,image/png" : headerFormat === "VIDEO" ? "video/mp4" : "application/pdf"}
+                      onChange={e => {
+                        const f = e.target.files?.[0];
+                        if (f) { setHeaderFile(f); uploadHeaderFile(f); }
+                      }}
+                    />
+                  </label>
+                  {headerHandle && (
+                    <button
+                      type="button"
+                      onClick={() => { setHeaderFile(null); setHeaderHandle(null); }}
+                      className="p-1.5 rounded-lg hover:bg-red-50 text-muted-foreground hover:text-red-500 transition-colors"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {headerFormat !== "NONE" && (
+                <p className="text-[10px] text-muted-foreground mt-1.5">
+                  {headerFormat === "TEXT" ? "Max 60 caracteres" : headerFormat === "IMAGE" ? "JPEG o PNG, max 5MB" : headerFormat === "VIDEO" ? "MP4, max 16MB" : "PDF, max 100MB"}
+                </p>
+              )}
             </div>
 
             {/* Body + variable chips */}
@@ -669,13 +774,40 @@ function CrearPlantillaDialog({ open, onClose, onCreated }: { open: boolean; onC
                   <div className="px-4 py-4">
                     <div className="flex justify-start">
                       <div className="max-w-[85%]">
-                        <div className="bg-white rounded-2xl rounded-tl-sm px-4 py-3 shadow-sm">
-                          <div className="text-[13px] text-gray-800 leading-relaxed">
-                            {renderWAText(bodyText, previewVars)}
+                        <div className="bg-white rounded-2xl rounded-tl-sm overflow-hidden shadow-sm">
+                          {headerFormat === "TEXT" && headerText && (
+                            <div className="px-4 pt-3 pb-1">
+                              <p className="text-[14px] font-bold text-gray-900">{headerText}</p>
+                            </div>
+                          )}
+                          {headerFormat === "IMAGE" && (
+                            <div className="bg-gray-200 h-36 flex items-center justify-center">
+                              {headerFile ? (
+                                <img src={URL.createObjectURL(headerFile)} alt="Header" className="w-full h-36 object-cover" />
+                              ) : (
+                                <Image className="w-8 h-8 text-gray-400" />
+                              )}
+                            </div>
+                          )}
+                          {headerFormat === "VIDEO" && (
+                            <div className="bg-gray-800 h-36 flex items-center justify-center">
+                              <Video className="w-8 h-8 text-gray-400" />
+                            </div>
+                          )}
+                          {headerFormat === "DOCUMENT" && (
+                            <div className="bg-gray-100 h-16 flex items-center gap-2 px-4">
+                              <FileText className="w-6 h-6 text-red-500" />
+                              <span className="text-xs text-gray-600 truncate">{headerFile?.name || "documento.pdf"}</span>
+                            </div>
+                          )}
+                          <div className="px-4 py-3">
+                            <div className="text-[13px] text-gray-800 leading-relaxed">
+                              {renderWAText(bodyText, previewVars)}
+                            </div>
+                            <p className="text-[10px] text-gray-400 text-right mt-2">
+                              {new Date().toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" })}
+                            </p>
                           </div>
-                          <p className="text-[10px] text-gray-400 text-right mt-2">
-                            {new Date().toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" })}
-                          </p>
                         </div>
                         {buttons.filter(b => b.text.trim()).map((b, i) => (
                           <div key={i} className="bg-white border-t border-gray-100 mt-px first:rounded-t-none last:rounded-b-2xl overflow-hidden">
