@@ -183,8 +183,8 @@ Servicio Python independiente desplegado en **Railway**. Corre diariamente a las
 
 | Variable env | Nombre en Meta | Idioma | Categoría | Estado |
 |---|---|---|---|---|
-| `WA_TEMPLATE_30D` | `renovacion_recordatorio_30d` | `es_PE` | MARKETING | PENDING (re-enviado con botones) |
-| `WA_TEMPLATE_7D` | `renovacion_recordatorio_7d` | `es_PE` | MARKETING | PENDING (re-enviado con botones) |
+| `WA_TEMPLATE_30D` | `renovacion_recordatorio_30d` | `es_PE` | MARKETING | APPROVED |
+| `WA_TEMPLATE_7D` | `renovacion_recordatorio_7d` | `es_PE` | MARKETING | APPROVED |
 | `WA_TEMPLATE_VENCIMIENTO` | `renovacion_vencimiento` | `es_PE` | MARKETING | APPROVED |
 
 > **Parámetros**: NAMED → `{{nombre}}` y `{{tratamiento}}` (solo 2, sin fecha). Botón Quick Reply: "Quiero agendar mi cita" (solo en `renovacion_vencimiento`).

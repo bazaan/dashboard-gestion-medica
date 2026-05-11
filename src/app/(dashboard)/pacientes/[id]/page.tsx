@@ -170,7 +170,8 @@ export default function PacientePerfilPage({ params }: { params: Promise<{ id: s
     });
   }, []);
 
-  const canSeePhone = userRole === "admin" || userRole === "doctor";
+  const canSeePhone    = userRole === "admin";
+  const canSeeSensible = userRole === "admin"; // DNI + teléfono solo admin
 
   if (isLoading || userRole === null) {
     return (
@@ -272,9 +273,16 @@ export default function PacientePerfilPage({ params }: { params: Promise<{ id: s
                   <div className="flex items-center gap-3 mt-1.5 flex-wrap">
                     <span className="text-sm text-muted-foreground">{edad} años</span>
                     <span className="w-1 h-1 rounded-full bg-border" />
-                    <span className="text-sm text-muted-foreground">
-                      DNI: <span className="font-mono font-medium text-foreground">{paciente.dni}</span>
-                    </span>
+                    {canSeeSensible ? (
+                      <span className="text-sm text-muted-foreground">
+                        DNI: <span className="font-mono font-medium text-foreground">{paciente.dni}</span>
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1 text-sm text-muted-foreground/35">
+                        <Lock className="w-3 h-3" />
+                        <span className="font-mono tracking-widest">••••••••</span>
+                      </span>
+                    )}
                     <span className="w-1 h-1 rounded-full bg-border" />
                     <span className="flex items-center gap-1 text-sm text-muted-foreground">
                       <BadgeCheck className="w-3.5 h-3.5 text-primary" />
@@ -354,7 +362,7 @@ export default function PacientePerfilPage({ params }: { params: Promise<{ id: s
               <div className="card-premium p-6">
                 <p className="label-elegant mb-4">Datos Personales</p>
                 <InfoRow label="Nombres completos" value={`${paciente.nombres} ${paciente.apellidos}`} icon={User} />
-                <InfoRow label="DNI" value={paciente.dni} />
+                <InfoRow label="DNI" value={canSeeSensible ? paciente.dni : "••••••••"} />
                 <InfoRow
                   label="Fecha de nacimiento"
                   value={`${new Date(paciente.fecha_nacimiento).toLocaleDateString("es-PE")} (${edad} años)`}
@@ -368,7 +376,7 @@ export default function PacientePerfilPage({ params }: { params: Promise<{ id: s
               <div className="card-premium p-6">
                 <p className="label-elegant mb-4">Contacto & Ubicación</p>
                 <PhoneInfoRow paciente={paciente} canSeePhone={canSeePhone} />
-                <InfoRow label="Teléfono Alt." value={paciente.telefono_alt} icon={Phone} />
+                <InfoRow label="Teléfono Alt." value={canSeeSensible ? paciente.telefono_alt : (paciente.telefono_alt ? "••••••••" : undefined)} icon={Phone} />
                 <InfoRow label="Email" value={paciente.email} icon={Mail} />
                 <InfoRow label="Dirección" value={paciente.direccion} icon={MapPin} />
                 {(paciente.distrito || paciente.ciudad) && (

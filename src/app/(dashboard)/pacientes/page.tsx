@@ -169,8 +169,8 @@ function ConfirmarEliminar({
   );
 }
 
-// ── Teléfono enmascarado en la lista ─────────────────────────
-function PhoneMasked() {
+// ── Dato sensible enmascarado en la lista ────────────────────
+function DatoMasked() {
   return (
     <span className="flex items-center gap-1 text-[10px] text-muted-foreground/35">
       <Lock className="w-2.5 h-2.5" />
@@ -199,8 +199,9 @@ export default function PacientesPage() {
     });
   }, []);
 
-  const canDelete   = userRole === "admin" || userRole === "doctor";
-  const canSeePhone = userRole === "admin" || userRole === "doctor";
+  const canDelete      = userRole === "admin" || userRole === "doctor";
+  const canSeePhone    = userRole === "admin";
+  const canSeeSensible = userRole === "admin"; // DNI + teléfono solo admin
 
   const { data: pacientes = [], isLoading, error } = usePacientes(search);
   const { mutate: eliminar, isPending: eliminando } = useEliminarPaciente();
@@ -227,6 +228,7 @@ export default function PacientesPage() {
         onSuccess={handleCloseDrawer}
         paciente={editPaciente}
         canEditPhone={canSeePhone}
+        canEditDni={canSeeSensible}
       />
 
       {deletePaciente && (
@@ -338,13 +340,17 @@ export default function PacientesPage() {
                           </span>
                         </div>
                         <div className="flex items-center gap-3 mt-0.5">
-                          <span className="text-[10px] text-muted-foreground font-mono">{p.dni}</span>
+                          {canSeeSensible ? (
+                            <span className="text-[10px] text-muted-foreground font-mono">{p.dni}</span>
+                          ) : (
+                            <DatoMasked />
+                          )}
                           {canSeePhone ? (
                             <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground">
                               <Phone className="w-2.5 h-2.5" />{p.telefono}
                             </span>
                           ) : (
-                            <PhoneMasked />
+                            <DatoMasked />
                           )}
                         </div>
                       </div>
@@ -398,13 +404,17 @@ export default function PacientesPage() {
                           </div>
                         </td>
                         <td className="px-6 py-4">
-                          <span className="font-mono text-sm text-foreground/80">{p.dni}</span>
+                          {canSeeSensible ? (
+                            <span className="font-mono text-sm text-foreground/80">{p.dni}</span>
+                          ) : (
+                            <DatoMasked />
+                          )}
                         </td>
                         <td className="px-6 py-4 hidden lg:table-cell">
                           {canSeePhone ? (
                             <span className="text-sm text-muted-foreground">{p.telefono}</span>
                           ) : (
-                            <PhoneMasked />
+                            <DatoMasked />
                           )}
                         </td>
                         <td className="px-6 py-4 hidden lg:table-cell">

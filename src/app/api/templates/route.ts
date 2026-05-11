@@ -54,10 +54,12 @@ export async function POST(req: NextRequest) {
     if (buttons && buttons.length > 0) {
       components.push({
         type: "BUTTONS",
-        buttons: buttons.map((b: any) => ({
-          type: b.type || "QUICK_REPLY",
-          text: b.text,
-        })),
+        buttons: buttons.map((b: any) => {
+          if (b.type === "PHONE_NUMBER") {
+            return { type: "PHONE_NUMBER", text: b.text, phone_number: b.phone_number || b.phone };
+          }
+          return { type: "QUICK_REPLY", text: b.text };
+        }),
       });
     }
 

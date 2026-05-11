@@ -21,6 +21,7 @@ interface Props {
   onSuccess: () => void;
   paciente?: Paciente;    // si se pasa → modo edición
   canEditPhone?: boolean; // false = recepcion sin permiso (default: true)
+  canEditDni?: boolean;   // false = recepcion no ve DNI (default: true)
 }
 
 const SECCIONES = [
@@ -116,7 +117,7 @@ function Field({
   );
 }
 
-export function NuevoPacienteDrawer({ open, onClose, onSuccess, paciente, canEditPhone = true }: Props) {
+export function NuevoPacienteDrawer({ open, onClose, onSuccess, paciente, canEditPhone = true, canEditDni = true }: Props) {
   const overlayRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
   const esEdicion = !!paciente;
@@ -151,7 +152,7 @@ export function NuevoPacienteDrawer({ open, onClose, onSuccess, paciente, canEdi
       reset({
         nombres:               paciente.nombres,
         apellidos:             paciente.apellidos,
-        dni:                   paciente.dni,
+        dni:                   canEditDni ? paciente.dni : "",
         fecha_nacimiento:      paciente.fecha_nacimiento,
         sexo:                  (paciente.sexo as "F" | "M" | "otro") || undefined,
         ocupacion:             paciente.ocupacion || "",
@@ -200,7 +201,8 @@ export function NuevoPacienteDrawer({ open, onClose, onSuccess, paciente, canEdi
     const payload = {
       nombres:               data.nombres,
       apellidos:             data.apellidos,
-      dni:                   data.dni,
+      // Si el DNI está bloqueado, preservar el valor original de la DB
+      dni:                   (esEdicion && !canEditDni) ? (paciente?.dni ?? "") : data.dni,
       email:                 data.email || null,
       // Si el teléfono está bloqueado, preservar el valor original de la DB
       telefono:              phoneBloqueado ? (paciente?.telefono ?? "") : data.telefono,
@@ -333,8 +335,15 @@ export function NuevoPacienteDrawer({ open, onClose, onSuccess, paciente, canEdi
                 <Field label="Apellidos" required error={errors.apellidos?.message}>
                   <input {...register("apellidos")} placeholder="González" className="input-premium" />
                 </Field>
-                <Field label="DNI / Documento" required error={errors.dni?.message}>
-                  <input {...register("dni")} placeholder="45871236" maxLength={12} className="input-premium font-mono" />
+                <Field label="DNI / Documento" required={canEditDni} error={canEditDni ? errors.dni?.message : undefined}>
+                  {esEdicion && !canEditDni ? (
+                    <div className="input-premium flex items-center gap-2.5 bg-muted/60 cursor-not-allowed select-none">
+                      <Lock className="w-4 h-4 text-muted-foreground/40 shrink-0" />
+                      <span className="font-mono tracking-widest text-muted-foreground/30 text-sm">••••••••</span>
+                    </div>
+                  ) : (
+                    <input {...register("dni")} placeholder="45871236" maxLength={12} className="input-premium font-mono" />
+                  )}
                 </Field>
                 <Field label="Fecha de Nacimiento" required error={errors.fecha_nacimiento?.message}>
                   <input type="date" {...register("fecha_nacimiento")} className="input-premium" />

@@ -305,34 +305,34 @@ function PermisosSection() {
             <p className="text-sm font-semibold text-foreground">Acceso a Expedientes</p>
           </div>
           <p className="text-xs text-muted-foreground mb-3">
-            Recepción requiere aprobación de la doctora para abrir el expediente clínico de cada paciente.
+            Recepción tiene acceso libre a todos los expedientes clínicos. Puede ver historias, evoluciones y fotos.
           </p>
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-            <CheckCircle2 className="w-2.5 h-2.5" /> Activo
+            <CheckCircle2 className="w-2.5 h-2.5" /> Acceso libre
           </span>
         </div>
 
         <div className="p-4 rounded-xl border border-border">
           <div className="flex items-center gap-2 mb-2">
-            <Clock className="w-4 h-4 text-primary" />
-            <p className="text-sm font-semibold text-foreground">Duración del Permiso</p>
+            <Shield className="w-4 h-4 text-primary" />
+            <p className="text-sm font-semibold text-foreground">Datos Sensibles Protegidos</p>
           </div>
           <p className="text-xs text-muted-foreground mb-3">
-            Los permisos aprobados expiran a la medianoche del mismo día. Al día siguiente, se requiere nueva solicitud.
+            El DNI y número de teléfono de los pacientes están ocultos para doctora y recepción. Solo el administrador puede verlos.
           </p>
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
-            <Clock className="w-2.5 h-2.5" /> Hasta medianoche
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+            <Shield className="w-2.5 h-2.5" /> DNI + Teléfono ocultos
           </span>
         </div>
       </div>
 
-      <div className="p-3.5 rounded-xl bg-amber-50/50 border border-amber-200/60">
+      <div className="p-3.5 rounded-xl bg-blue-50/50 border border-blue-200/60">
         <div className="flex items-start gap-2">
-          <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+          <Shield className="w-4 h-4 text-blue-600 mt-0.5 shrink-0" />
           <div>
-            <p className="text-sm font-medium text-foreground">Notificaciones en tiempo real</p>
+            <p className="text-sm font-medium text-foreground">Protección de datos personales</p>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Las solicitudes de acceso aparecen instantáneamente en el sidebar de la doctora con un badge amarillo parpadeante. La respuesta se refleja al instante en la pantalla de recepción via Supabase Realtime.
+              Doctora y recepción ven los nombres y datos clínicos pero no pueden acceder al DNI ni teléfono de los pacientes. Solo el administrador tiene acceso a estos datos sensibles.
             </p>
           </div>
         </div>
