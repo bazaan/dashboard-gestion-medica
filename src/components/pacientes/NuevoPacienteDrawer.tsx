@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQueryClient } from "@tanstack/react-query";
 import { X, User, Phone, MapPin, Stethoscope, ShieldCheck, Loader2, ChevronRight, Pencil, Lock, Clock } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
+import { z } from "zod";
 import { pacienteSchema, type PacienteFormData } from "@/lib/schemas/paciente.schema";
 import {
   usePermisoActivo,
@@ -128,6 +129,16 @@ export function NuevoPacienteDrawer({ open, onClose, onSuccess, paciente, canEdi
   // El teléfono está bloqueado cuando: edición + recepcion (canEditPhone=false) + sin desbloqueo
   const phoneBloqueado = esEdicion && !canEditPhone && !phoneDesbloqueado;
 
+  // When DNI/phone are blocked, make them optional in validation
+  const dniBloqueado = esEdicion && !canEditDni;
+  const schema = useMemo(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let s: any = pacienteSchema;
+    if (dniBloqueado) s = s.extend({ dni: z.string().optional().or(z.literal("")) });
+    if (phoneBloqueado) s = s.extend({ telefono: z.string().optional().or(z.literal("")) });
+    return s;
+  }, [dniBloqueado, phoneBloqueado]);
+
   const {
     register,
     handleSubmit,
@@ -135,7 +146,7 @@ export function NuevoPacienteDrawer({ open, onClose, onSuccess, paciente, canEdi
     setValue,
     formState: { errors, isSubmitting },
   } = useForm<PacienteFormData>({
-    resolver: zodResolver(pacienteSchema),
+    resolver: zodResolver(schema),
     defaultValues: { ciudad: "Lima", consentimiento_datos: false },
   });
 
