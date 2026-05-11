@@ -58,10 +58,28 @@ export async function POST(req: NextRequest) {
       components.push(headerComp);
     }
 
-    components.push({
+    // Extract variables like {{nombre}}, {{tratamiento}} from body
+    const varMatches = body_text.match(/\{\{(\w+)\}\}/g) || [];
+    const uniqueVars = [...new Set(varMatches.map((v: string) => v.replace(/[{}]/g, "")))] as string[];
+
+    // Meta requires example values when variables are present
+    const EXAMPLE_VALUES: Record<string, string> = {
+      nombre: "Maria Garcia",
+      tratamiento: "Rejuran",
+    };
+
+    const bodyComp: any = {
       type: "BODY",
       text: body_text,
-    });
+    };
+
+    if (uniqueVars.length > 0) {
+      bodyComp.example = {
+        body_text: [uniqueVars.map((v: string) => EXAMPLE_VALUES[v] || `ejemplo_${v}`)],
+      };
+    }
+
+    components.push(bodyComp);
 
     if (buttons && buttons.length > 0) {
       components.push({
