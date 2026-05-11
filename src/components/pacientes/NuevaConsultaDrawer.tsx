@@ -34,7 +34,6 @@ export function NuevaConsultaDrawer({
 }: Props) {
   const [selectedTratamientos, setSelectedTratamientos] = useState<string[]>([]);
   const [doctorId, setDoctorId]   = useState("");
-  const [clinicaOpen, setClinicaOpen] = useState(false);
   const [historiaOpen, setHistoriaOpen] = useState(false);
   const [catSearch, setCatSearch] = useState("");
   const [historiaForm, setHistoriaForm] = useState<HistoriaFormState>(
@@ -138,7 +137,6 @@ export function NuevaConsultaDrawer({
     setSelectedTratamientos([]);
     setValue("tratamiento_ids", []);
     setCatSearch("");
-    setClinicaOpen(false);
     setHistoriaOpen(false);
     setHistoriaForm(historia ? historiaToForm(historia) : FORM_EMPTY);
     onSuccess();
@@ -295,111 +293,6 @@ export function NuevaConsultaDrawer({
                 <CalendarClock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
                 <input type="date" {...register("proxima_sesion")} className={`${inputCls} pl-9`} />
               </div>
-            </div>
-
-            {/* ── Datos clínicos adicionales (colapsable) ── */}
-            <div className="border border-border rounded-xl overflow-hidden">
-              <button
-                type="button"
-                onClick={() => setClinicaOpen((v) => !v)}
-                className={`w-full flex items-center gap-3 px-4 py-3.5 text-left transition-colors ${clinicaOpen ? "bg-muted/40" : "hover:bg-muted/20"}`}
-              >
-                <ClipboardList className="w-4 h-4 text-primary/60 shrink-0" />
-                <span className="flex-1 text-sm font-medium text-foreground">Datos clínicos adicionales</span>
-                <span className="text-xs text-muted-foreground mr-1">Motivo, examen, RAM, antecedentes…</span>
-                {clinicaOpen ? <ChevronUp className="w-4 h-4 text-muted-foreground shrink-0" /> : <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />}
-              </button>
-
-              {clinicaOpen && (
-                <div className="px-5 pb-5 pt-3 space-y-4 border-t border-border/60">
-
-                  <div>
-                    <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">
-                      Motivo de consulta
-                    </label>
-                    <textarea {...register("motivo_consulta")} rows={2}
-                      className={`${inputCls} resize-none`}
-                      placeholder="¿Por qué acude la paciente hoy?" />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">
-                        Signos y síntomas
-                      </label>
-                      <textarea {...register("signos_sintomas")} rows={2}
-                        className={`${inputCls} resize-none`} placeholder="…" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">
-                        Examen físico
-                      </label>
-                      <textarea {...register("examen_fisico")} rows={2}
-                        className={`${inputCls} resize-none`} placeholder="Hallazgos…" />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">
-                        Diagnóstico
-                      </label>
-                      <textarea {...register("diagnostico")} rows={2}
-                        className={`${inputCls} resize-none`} placeholder="Diagnóstico clínico…" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">
-                        RAM (reacciones adversas)
-                      </label>
-                      <textarea {...register("ram")} rows={2}
-                        className={`${inputCls} resize-none`} placeholder="Alergias conocidas…" />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">
-                        Antecedentes
-                      </label>
-                      <textarea {...register("antecedentes")} rows={2}
-                        className={`${inputCls} resize-none`} placeholder="Médicos, quirúrgicos…" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">
-                        Medicación actual
-                      </label>
-                      <textarea {...register("medicacion")} rows={2}
-                        className={`${inputCls} resize-none`} placeholder="Medicamentos en uso…" />
-                    </div>
-                  </div>
-
-                  {pacienteSexo === "F" && (
-                    <div>
-                      <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">
-                        FUR — Fecha de última regla
-                      </label>
-                      <input type="date" {...register("fur")} className={inputCls} />
-                    </div>
-                  )}
-
-                  <div>
-                    <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">
-                      Exámenes auxiliares
-                    </label>
-                    <textarea {...register("examenes_auxiliares")} rows={2}
-                      className={`${inputCls} resize-none`} placeholder="Laboratorio, imágenes…" />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">
-                      Recomendaciones post-procedimiento
-                    </label>
-                    <textarea {...register("recomendaciones")} rows={2}
-                      className={`${inputCls} resize-none`} placeholder="Cuidados, restricciones…" />
-                  </div>
-
-                </div>
-              )}
             </div>
 
             {/* ── Historia Clínica del paciente (colapsable) ── */}
