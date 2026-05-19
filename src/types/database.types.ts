@@ -9,6 +9,8 @@ export type Json =
 
 export type UserRole        = 'admin' | 'doctor' | 'recepcion'
 export type PacienteEstado  = 'activo' | 'inactivo' | 'vip'
+export type NivelPaciente   = 'verde' | 'amarillo' | 'rojo'
+export type NivelAtencion   = 'normal' | 'precaucion' | 'no_contactar'
 export type Sexo            = 'F' | 'M' | 'otro'
 export type CitaEstado      = 'pendiente' | 'confirmada' | 'en_sala_espera' | 'en_atencion' | 'completada' | 'cancelada' | 'no_asistio'
 export type FormaPago       = 'efectivo' | 'tarjeta' | 'transferencia' | 'mixto'
@@ -72,6 +74,7 @@ export interface Database {
           antecedentes_medicos: string | null; medicamentos_actuales: string | null
           consentimiento_datos: boolean; consentimiento_fecha: string | null
           estado: PacienteEstado; foto_perfil_url: string | null
+          nivel_paciente: NivelPaciente; nivel_atencion: NivelAtencion
           notas_internas: string | null; creado_por: string | null
           created_at: string; updated_at: string
         }

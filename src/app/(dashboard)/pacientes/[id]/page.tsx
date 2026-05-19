@@ -34,6 +34,12 @@ const ESTADO_CONFIG: Record<string, { label: string; class: string }> = {
   inactivo: { label: "Inactivo", class: "bg-slate-50 text-slate-500 border-slate-200" },
 };
 
+const NIVEL_DOT: Record<string, string> = {
+  verde:    "bg-emerald-500",
+  amarillo: "bg-amber-400",
+  rojo:     "bg-red-500",
+};
+
 function InfoRow({ label, value, icon: Icon }: { label: string; value?: string | null; icon?: React.ElementType }) {
   if (!value) return null;
   return (
@@ -237,9 +243,12 @@ export default function PacientePerfilPage({ params }: { params: Promise<{ id: s
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${estadoConfig.class}`}>
-              {estadoConfig.label}
-            </span>
+            <div className="flex items-center gap-2">
+              <span className={`w-2.5 h-2.5 rounded-full ${NIVEL_DOT[paciente.nivel_paciente] || NIVEL_DOT.verde}`} title={`Nivel: ${paciente.nivel_paciente || "verde"}`} />
+              <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${estadoConfig.class}`}>
+                {estadoConfig.label}
+              </span>
+            </div>
             {historia && (
               <button
                 onClick={() => setConsultaDrawerOpen(true)}

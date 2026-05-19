@@ -21,6 +21,8 @@ export const pacienteSchema = z.object({
   alergias_texto: z.string().optional().or(z.literal("")),
   antecedentes_medicos: z.string().optional().or(z.literal("")),
   medicamentos_actuales: z.string().optional().or(z.literal("")),
+  nivel_paciente: z.enum(["verde", "amarillo", "rojo"]).optional(),
+  nivel_atencion: z.enum(["normal", "precaucion", "no_contactar"]).optional(),
   consentimiento_datos: z.boolean().refine((v) => v === true, {
     message: "El consentimiento es obligatorio",
   }),

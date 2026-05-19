@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQueryClient } from "@tanstack/react-query";
-import { X, User, Phone, MapPin, Stethoscope, ShieldCheck, Loader2, ChevronRight, Pencil, Lock, Clock } from "lucide-react";
+import { X, User, Phone, MapPin, Stethoscope, ShieldCheck, Loader2, ChevronRight, Pencil, Lock, Clock, Tag } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -30,6 +30,7 @@ const SECCIONES = [
   { id: "contacto", label: "Contacto", icon: Phone },
   { id: "ubicacion", label: "Ubicación", icon: MapPin },
   { id: "medico", label: "Antecedentes Médicos", icon: Stethoscope },
+  { id: "clasificacion", label: "Clasificación", icon: Tag },
   { id: "consentimiento", label: "Consentimiento", icon: ShieldCheck },
 ];
 
@@ -182,6 +183,8 @@ export function NuevoPacienteDrawer({ open, onClose, onSuccess, paciente, canEdi
         alergias_texto:        (paciente.alergias ?? []).join(", "),
         antecedentes_medicos:  paciente.antecedentes_medicos || "",
         medicamentos_actuales: paciente.medicamentos_actuales || "",
+        nivel_paciente:        (paciente.nivel_paciente as "verde" | "amarillo" | "rojo") || "verde",
+        nivel_atencion:        (paciente.nivel_atencion as "normal" | "precaucion" | "no_contactar") || "normal",
         consentimiento_datos:  true,
       });
     } else if (open && !paciente) {
@@ -232,6 +235,8 @@ export function NuevoPacienteDrawer({ open, onClose, onSuccess, paciente, canEdi
       alergias,
       antecedentes_medicos:  data.antecedentes_medicos || null,
       medicamentos_actuales: data.medicamentos_actuales || null,
+      nivel_paciente:        data.nivel_paciente || "verde",
+      nivel_atencion:        data.nivel_atencion || "normal",
     };
 
     if (esEdicion && paciente) {
@@ -314,7 +319,7 @@ export function NuevoPacienteDrawer({ open, onClose, onSuccess, paciente, canEdi
 
         {/* Índice de secciones */}
         <div className="flex items-center gap-1 px-8 py-3 border-b border-border bg-muted/30 overflow-x-auto shrink-0">
-          {(esEdicion ? SECCIONES.slice(0, 4) : SECCIONES).map((s, i, arr) => {
+          {(esEdicion ? SECCIONES.slice(0, 5) : SECCIONES).map((s, i, arr) => {
             const Icon = s.icon;
             return (
               <div key={s.id} className="flex items-center gap-1 shrink-0">
@@ -478,6 +483,33 @@ export function NuevoPacienteDrawer({ open, onClose, onSuccess, paciente, canEdi
                     />
                   </Field>
                 </div>
+              </div>
+            </section>
+
+            {/* ── CLASIFICACIÓN ── */}
+            <section id="seccion-clasificacion">
+              <div className="flex items-center gap-2 mb-4">
+                <Tag className="w-4 h-4 text-primary" />
+                <h3 className="font-semibold text-sm text-foreground">Clasificación</h3>
+                <div className="flex-1 h-px bg-border" />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Nivel de paciente" error={errors.nivel_paciente?.message}>
+                  <select {...register("nivel_paciente")} className="input-premium bg-white">
+                    <option value="verde">🟢 Verde — Normal</option>
+                    <option value="amarillo">🟡 Amarillo — Precaución</option>
+                    <option value="rojo">🔴 Rojo — Problemático</option>
+                  </select>
+                  <p className="text-[10px] text-muted-foreground mt-1">Semáforo de comportamiento del paciente</p>
+                </Field>
+                <Field label="Nivel de atención" error={errors.nivel_atencion?.message}>
+                  <select {...register("nivel_atencion")} className="input-premium bg-white">
+                    <option value="normal">Normal — Contacto habilitado</option>
+                    <option value="precaucion">Precaución — Contacto con cuidado</option>
+                    <option value="no_contactar">No contactar — Excluir de campañas</option>
+                  </select>
+                  <p className="text-[10px] text-muted-foreground mt-1">Define si recibe campañas de remarketing</p>
+                </Field>
               </div>
             </section>
 

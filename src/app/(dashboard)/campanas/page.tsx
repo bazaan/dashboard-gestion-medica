@@ -29,6 +29,11 @@ type Patient = {
   apellidos: string;
   telefono: string;
   estado: string;
+  sexo: string | null;
+  fecha_nacimiento: string | null;
+  distrito: string | null;
+  nivel_paciente: string | null;
+  nivel_atencion: string | null;
 };
 
 type SendResult = {
@@ -115,6 +120,13 @@ function TabNuevaCampana({ onSent }: { onSent: () => void }) {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [filterEstado, setFilterEstado] = useState("");
+  const [filterSexo, setFilterSexo] = useState("");
+  const [filterEdadMin, setFilterEdadMin] = useState("");
+  const [filterEdadMax, setFilterEdadMax] = useState("");
+  const [filterDistrito, setFilterDistrito] = useState("");
+  const [filterNivel, setFilterNivel] = useState("");
+  const [filterAtencion, setFilterAtencion] = useState("");
+  const [filterPais, setFilterPais] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   const [defaultTratamiento, setDefaultTratamiento] = useState("");
@@ -139,7 +151,7 @@ function TabNuevaCampana({ onSent }: { onSent: () => void }) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data } = await (supabase as any)
         .from("pacientes")
-        .select("id, nombres, apellidos, telefono, estado")
+        .select("id, nombres, apellidos, telefono, estado, sexo, fecha_nacimiento, distrito, nivel_paciente, nivel_atencion")
         .order("nombres", { ascending: true });
       setPatients(data || []);
     } catch { /* ignore */ }
@@ -150,6 +162,26 @@ function TabNuevaCampana({ onSent }: { onSent: () => void }) {
     fetchTemplates();
     fetchPatients();
   }, [fetchTemplates, fetchPatients]);
+
+  function calcAge(fechaNac: string | null): number | null {
+    if (!fechaNac) return null;
+    const birth = new Date(fechaNac);
+    const today = new Date();
+    let age = today.getFullYear() - birth.getFullYear();
+    const m = today.getMonth() - birth.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+    return age;
+  }
+
+  const distritos = useMemo(() => {
+    const set = new Set<string>();
+    patients.forEach(p => {
+      if (p.distrito) set.add(p.distrito.trim().toUpperCase());
+    });
+    return [...set].sort();
+  }, [patients]);
+
+  const activeFilterCount = [filterEstado, filterSexo, filterEdadMin, filterEdadMax, filterDistrito, filterNivel, filterAtencion, filterPais].filter(Boolean).length;
 
   const filteredPatients = useMemo(() => {
     let list = patients;
@@ -162,8 +194,22 @@ function TabNuevaCampana({ onSent }: { onSent: () => void }) {
       );
     }
     if (filterEstado) list = list.filter(p => p.estado === filterEstado);
+    if (filterSexo) list = list.filter(p => p.sexo === filterSexo);
+    if (filterEdadMin) {
+      const min = parseInt(filterEdadMin);
+      if (!isNaN(min)) list = list.filter(p => { const a = calcAge(p.fecha_nacimiento); return a !== null && a >= min; });
+    }
+    if (filterEdadMax) {
+      const max = parseInt(filterEdadMax);
+      if (!isNaN(max)) list = list.filter(p => { const a = calcAge(p.fecha_nacimiento); return a !== null && a <= max; });
+    }
+    if (filterDistrito) list = list.filter(p => p.distrito?.trim().toUpperCase() === filterDistrito);
+    if (filterNivel) list = list.filter(p => (p.nivel_paciente || "verde") === filterNivel);
+    if (filterAtencion) list = list.filter(p => (p.nivel_atencion || "normal") === filterAtencion);
+    if (filterPais === "peru") list = list.filter(p => !p.telefono || p.telefono.startsWith("+51") || p.telefono.startsWith("51") || /^9\d{8}$/.test(p.telefono));
+    if (filterPais === "extranjero") list = list.filter(p => p.telefono && !p.telefono.startsWith("+51") && !p.telefono.startsWith("51") && !/^9\d{8}$/.test(p.telefono));
     return list;
-  }, [patients, searchQuery, filterEstado]);
+  }, [patients, searchQuery, filterEstado, filterSexo, filterEdadMin, filterEdadMax, filterDistrito, filterNivel, filterAtencion, filterPais]);
 
   useEffect(() => {
     if (selectAll) setSelectedIds(new Set(filteredPatients.map(p => p.id)));
@@ -346,10 +392,13 @@ function TabNuevaCampana({ onSent }: { onSent: () => void }) {
           <button
             onClick={() => setFiltersOpen(v => !v)}
             className={`flex items-center gap-1.5 px-3 py-2.5 rounded-lg text-xs font-semibold border transition-colors ${
-              filtersOpen ? "bg-primary/5 border-primary/30 text-primary" : "border-border hover:bg-muted"
+              filtersOpen || activeFilterCount > 0 ? "bg-primary/5 border-primary/30 text-primary" : "border-border hover:bg-muted"
             }`}
           >
             <Filter className="w-3.5 h-3.5" /> Filtros
+            {activeFilterCount > 0 && (
+              <span className="w-4.5 h-4.5 rounded-full bg-primary text-white text-[10px] font-bold flex items-center justify-center leading-none">{activeFilterCount}</span>
+            )}
           </button>
           <button
             onClick={handleSelectAll}
@@ -363,17 +412,132 @@ function TabNuevaCampana({ onSent }: { onSent: () => void }) {
         </div>
 
         {filtersOpen && (
-          <div className="mb-4 p-3 bg-muted/30 rounded-xl border border-border">
-            <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Estado</label>
-            <select
-              value={filterEstado}
-              onChange={e => setFilterEstado(e.target.value)}
-              className="input-premium max-w-[200px]"
-            >
-              <option value="">Todos</option>
-              <option value="activo">Activo</option>
-              <option value="inactivo">Inactivo</option>
-            </select>
+          <div className="mb-4 p-4 bg-muted/30 rounded-xl border border-border space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Filtros avanzados</p>
+              {activeFilterCount > 0 && (
+                <button
+                  onClick={() => { setFilterEstado(""); setFilterSexo(""); setFilterEdadMin(""); setFilterEdadMax(""); setFilterDistrito(""); setFilterNivel(""); setFilterAtencion(""); setFilterPais(""); }}
+                  className="text-[11px] text-primary font-semibold hover:underline"
+                >
+                  Limpiar filtros
+                </button>
+              )}
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+              <div>
+                <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Sexo</label>
+                <select value={filterSexo} onChange={e => setFilterSexo(e.target.value)} className="input-premium w-full">
+                  <option value="">Todos</option>
+                  <option value="F">Femenino</option>
+                  <option value="M">Masculino</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Edad desde</label>
+                <input
+                  type="number" min="0" max="120" placeholder="18"
+                  value={filterEdadMin} onChange={e => setFilterEdadMin(e.target.value)}
+                  className="input-premium w-full"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Edad hasta</label>
+                <input
+                  type="number" min="0" max="120" placeholder="50"
+                  value={filterEdadMax} onChange={e => setFilterEdadMax(e.target.value)}
+                  className="input-premium w-full"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Distrito</label>
+                <select value={filterDistrito} onChange={e => setFilterDistrito(e.target.value)} className="input-premium w-full">
+                  <option value="">Todos</option>
+                  {distritos.map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Estado</label>
+                <select value={filterEstado} onChange={e => setFilterEstado(e.target.value)} className="input-premium w-full">
+                  <option value="">Todos</option>
+                  <option value="activo">Activo</option>
+                  <option value="vip">VIP</option>
+                  <option value="inactivo">Inactivo</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Nivel paciente</label>
+                <select value={filterNivel} onChange={e => setFilterNivel(e.target.value)} className="input-premium w-full">
+                  <option value="">Todos</option>
+                  <option value="verde">Verde</option>
+                  <option value="amarillo">Amarillo</option>
+                  <option value="rojo">Rojo</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Nivel atencion</label>
+                <select value={filterAtencion} onChange={e => setFilterAtencion(e.target.value)} className="input-premium w-full">
+                  <option value="">Todos</option>
+                  <option value="normal">Normal</option>
+                  <option value="precaucion">Precaucion</option>
+                  <option value="no_contactar">No contactar</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Pais</label>
+                <select value={filterPais} onChange={e => setFilterPais(e.target.value)} className="input-premium w-full">
+                  <option value="">Todos</option>
+                  <option value="peru">Peru (+51)</option>
+                  <option value="extranjero">Extranjero</option>
+                </select>
+              </div>
+            </div>
+            {activeFilterCount > 0 && (
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {filterSexo && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-primary/10 text-primary border border-primary/20">
+                    {filterSexo === "F" ? "Femenino" : "Masculino"}
+                    <button onClick={() => setFilterSexo("")}><X className="w-2.5 h-2.5" /></button>
+                  </span>
+                )}
+                {(filterEdadMin || filterEdadMax) && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-primary/10 text-primary border border-primary/20">
+                    Edad: {filterEdadMin || "0"} - {filterEdadMax || "120"}
+                    <button onClick={() => { setFilterEdadMin(""); setFilterEdadMax(""); }}><X className="w-2.5 h-2.5" /></button>
+                  </span>
+                )}
+                {filterDistrito && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-primary/10 text-primary border border-primary/20">
+                    {filterDistrito}
+                    <button onClick={() => setFilterDistrito("")}><X className="w-2.5 h-2.5" /></button>
+                  </span>
+                )}
+                {filterEstado && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-primary/10 text-primary border border-primary/20">
+                    {filterEstado}
+                    <button onClick={() => setFilterEstado("")}><X className="w-2.5 h-2.5" /></button>
+                  </span>
+                )}
+                {filterNivel && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-primary/10 text-primary border border-primary/20">
+                    Nivel: {filterNivel}
+                    <button onClick={() => setFilterNivel("")}><X className="w-2.5 h-2.5" /></button>
+                  </span>
+                )}
+                {filterAtencion && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-primary/10 text-primary border border-primary/20">
+                    {filterAtencion === "no_contactar" ? "No contactar" : filterAtencion}
+                    <button onClick={() => setFilterAtencion("")}><X className="w-2.5 h-2.5" /></button>
+                  </span>
+                )}
+                {filterPais && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-primary/10 text-primary border border-primary/20">
+                    {filterPais === "peru" ? "Peru" : "Extranjero"}
+                    <button onClick={() => setFilterPais("")}><X className="w-2.5 h-2.5" /></button>
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -386,6 +550,8 @@ function TabNuevaCampana({ onSent }: { onSent: () => void }) {
                     <input type="checkbox" checked={selectAll} onChange={handleSelectAll} className="rounded border-border" />
                   </th>
                   <th className="text-left px-3 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Paciente</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider hidden lg:table-cell">Edad</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider hidden md:table-cell">Distrito</th>
                   <th className="text-left px-3 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider hidden sm:table-cell">Telefono</th>
                   <th className="text-left px-3 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider hidden md:table-cell">Estado</th>
                 </tr>
@@ -410,6 +576,17 @@ function TabNuevaCampana({ onSent }: { onSent: () => void }) {
                     </td>
                     <td className="px-3 py-2.5">
                       <p className="font-medium">{p.nombres} {p.apellidos}</p>
+                      <p className="text-[10px] text-muted-foreground sm:hidden">
+                        {p.sexo === "F" ? "F" : p.sexo === "M" ? "M" : ""}{calcAge(p.fecha_nacimiento) !== null ? ` · ${calcAge(p.fecha_nacimiento)} anos` : ""}
+                      </p>
+                    </td>
+                    <td className="px-3 py-2.5 hidden lg:table-cell">
+                      {calcAge(p.fecha_nacimiento) !== null ? (
+                        <span className="text-muted-foreground text-xs">{calcAge(p.fecha_nacimiento)} <span className="text-[10px]">{p.sexo === "F" ? "F" : p.sexo === "M" ? "M" : ""}</span></span>
+                      ) : <span className="text-muted-foreground/50 text-xs">—</span>}
+                    </td>
+                    <td className="px-3 py-2.5 hidden md:table-cell">
+                      <span className="text-muted-foreground text-xs">{p.distrito || "—"}</span>
                     </td>
                     <td className="px-3 py-2.5 hidden sm:table-cell">
                       {p.telefono ? (
@@ -419,16 +596,26 @@ function TabNuevaCampana({ onSent }: { onSent: () => void }) {
                       )}
                     </td>
                     <td className="px-3 py-2.5 hidden md:table-cell">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                        p.estado === "activo" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-gray-100 text-gray-500 border border-gray-200"
-                      }`}>
-                        {p.estado || "activo"}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className={`w-2 h-2 rounded-full shrink-0 ${
+                          (p.nivel_paciente || "verde") === "verde" ? "bg-emerald-500" :
+                          (p.nivel_paciente || "verde") === "amarillo" ? "bg-amber-400" : "bg-red-500"
+                        }`} title={`Nivel: ${p.nivel_paciente || "verde"}`} />
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                          p.estado === "vip" ? "bg-primary/10 text-primary border border-primary/20" :
+                          p.estado === "activo" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-gray-100 text-gray-500 border border-gray-200"
+                        }`}>
+                          {p.estado || "activo"}
+                        </span>
+                        {(p.nivel_atencion === "no_contactar") && (
+                          <span className="text-red-500" title="No contactar"><AlertTriangle className="w-3 h-3" /></span>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
                 {filteredPatients.length === 0 && (
-                  <tr><td colSpan={4} className="px-3 py-8 text-center text-sm text-muted-foreground">No se encontraron pacientes</td></tr>
+                  <tr><td colSpan={6} className="px-3 py-8 text-center text-sm text-muted-foreground">No se encontraron pacientes</td></tr>
                 )}
               </tbody>
             </table>
