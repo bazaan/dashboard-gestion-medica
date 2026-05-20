@@ -7,7 +7,7 @@ export const pacienteSchema = z.object({
   email: z.string().email("Email inválido").optional().or(z.literal("")),
   telefono: z.string().min(9, "Teléfono inválido").max(20),
   telefono_alt: z.string().optional().or(z.literal("")),
-  fecha_nacimiento: z.string().min(1, "Fecha requerida"),
+  fecha_nacimiento: z.string().optional().or(z.literal("")),
   sexo: z.enum(["F", "M", "otro"]).optional(),
   direccion: z.string().optional().or(z.literal("")),
   distrito: z.string().optional().or(z.literal("")),

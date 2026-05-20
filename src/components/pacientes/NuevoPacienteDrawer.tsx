@@ -221,7 +221,7 @@ export function NuevoPacienteDrawer({ open, onClose, onSuccess, paciente, canEdi
       // Si el teléfono está bloqueado, preservar el valor original de la DB
       telefono:              phoneBloqueado ? (paciente?.telefono ?? "") : data.telefono,
       telefono_alt:          data.telefono_alt || null,
-      fecha_nacimiento:      data.fecha_nacimiento,
+      fecha_nacimiento:      data.fecha_nacimiento || null,
       sexo:                  data.sexo || null,
       direccion:             data.direccion || null,
       distrito:              data.distrito || null,
@@ -361,7 +361,7 @@ export function NuevoPacienteDrawer({ open, onClose, onSuccess, paciente, canEdi
                     <input {...register("dni")} placeholder="45871236" maxLength={12} className="input-premium font-mono" />
                   )}
                 </Field>
-                <Field label="Fecha de Nacimiento" required error={errors.fecha_nacimiento?.message}>
+                <Field label="Fecha de Nacimiento" error={errors.fecha_nacimiento?.message}>
                   <input type="date" {...register("fecha_nacimiento")} className="input-premium" />
                 </Field>
                 <Field label="Sexo" error={errors.sexo?.message}>
