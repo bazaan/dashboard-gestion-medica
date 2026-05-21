@@ -461,9 +461,9 @@ const INPUT_E = "w-full px-3.5 py-2.5 rounded-lg border border-border bg-white t
 const LABEL_E = "block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5";
 
 function EditarConsultaDrawer({
-  evolucion, historiaId, open, onClose,
+  evolucion, historiaId, historia, open, onClose,
 }: {
-  evolucion: EvolucionConProcs; historiaId: string; open: boolean; onClose: () => void;
+  evolucion: EvolucionConProcs; historiaId: string; historia?: HistoriaClinica | null; open: boolean; onClose: () => void;
 }) {
   const { mutate, isPending } = useActualizarEvolucion();
   const { data: tratamientos = [] } = useTratamientosCatalogo();
@@ -477,6 +477,10 @@ function EditarConsultaDrawer({
   const [selectedTrats, setSelectedTrats] = useState<string[]>([]);
   const [catSearch, setCatSearch]         = useState("");
   const [clinicaOpen, setClinicaOpen]     = useState(false);
+  const [historiaOpen, setHistoriaOpen]   = useState(false);
+  const [historiaForm, setHistoriaForm]   = useState<HistoriaFormState>(
+    () => historia ? historiaToForm(historia) : FORM_EMPTY
+  );
   const [fields, setFields] = useState({
     fecha:                  "",
     hora:                   "",
@@ -500,6 +504,8 @@ function EditarConsultaDrawer({
     setSelectedTrats(currentTratIds);
     setCatSearch("");
     setClinicaOpen(false);
+    setHistoriaOpen(false);
+    setHistoriaForm(historia ? historiaToForm(historia) : FORM_EMPTY);
     setFields({
       fecha:               fechaIso.toISOString().split("T")[0],
       hora:                fechaIso.toTimeString().slice(0, 5),
@@ -539,11 +545,21 @@ function EditarConsultaDrawer({
     return acc;
   }, {});
 
-  function handleSave() {
+  async function handleSave() {
     const fechaHora = `${fields.fecha}T${fields.hora}:00`;
     const procedimientoResumen = selectedTrats
       .map(id => tratamientos.find(t => t.id === id)?.nombre)
       .filter(Boolean).join(", ");
+
+    // Si la sección de historia clínica fue abierta, guardar los cambios
+    if (historiaOpen) {
+      const supabase = createClient();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (supabase as any)
+        .from("historias_clinicas")
+        .update(formToDbPayload(historiaForm))
+        .eq("id", historiaId);
+    }
 
     mutate({
       id: evolucion.id,
@@ -709,6 +725,30 @@ function EditarConsultaDrawer({
               </div>
             )}
           </div>
+
+          {/* Historia Clínica del paciente (colapsable) */}
+          {historia && (
+            <div className="border border-border rounded-xl overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setHistoriaOpen(v => !v)}
+                className={`w-full flex items-center gap-3 px-4 py-3.5 text-left transition-colors ${historiaOpen ? "bg-muted/40" : "hover:bg-muted/20"}`}
+              >
+                <Stethoscope className="w-4 h-4 text-primary/60 shrink-0" />
+                <span className="flex-1 text-sm font-medium">Historia clínica del paciente</span>
+                <span className="text-xs text-muted-foreground mr-1">Antecedentes, signos vitales…</span>
+                {historiaOpen ? <ChevronUp className="w-4 h-4 text-muted-foreground shrink-0" /> : <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />}
+              </button>
+              {historiaOpen && (
+                <div className="px-4 pb-5 pt-3 border-t border-border/60">
+                  <p className="text-xs text-muted-foreground mb-4">
+                    Los cambios realizados aquí actualizarán la historia base del paciente al guardar.
+                  </p>
+                  <HistoriaFormFields form={historiaForm} setForm={setHistoriaForm} />
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Footer */}
@@ -732,7 +772,7 @@ function EditarConsultaDrawer({
 // ─────────────────────────────────────────────────────────────────────────────
 // Card de Evolución
 // ─────────────────────────────────────────────────────────────────────────────
-function EvolucionCard({ evolucion, historiaId, defaultOpen = false }: { evolucion: EvolucionConProcs; historiaId: string; defaultOpen?: boolean }) {
+function EvolucionCard({ evolucion, historiaId, historia, defaultOpen = false }: { evolucion: EvolucionConProcs; historiaId: string; historia?: HistoriaClinica | null; defaultOpen?: boolean }) {
   const [expanded, setExpanded] = useState(defaultOpen);
   const [editOpen, setEditOpen] = useState(false);
 
@@ -860,6 +900,7 @@ function EvolucionCard({ evolucion, historiaId, defaultOpen = false }: { evoluci
       <EditarConsultaDrawer
         evolucion={evolucion}
         historiaId={historiaId}
+        historia={historia}
         open={editOpen}
         onClose={() => setEditOpen(false)}
       />
@@ -1096,7 +1137,7 @@ export function HistoriaClinicaTab({ pacienteId, pacienteNombre }: Props) {
               <div className="absolute left-[18px] top-5 bottom-5 w-px bg-gradient-to-b from-primary/40 via-primary/20 to-transparent" />
               <div className="space-y-2 pl-1">
                 {evoluciones.map((ev, i) => (
-                  <EvolucionCard key={ev.id} evolucion={ev} historiaId={historia.id} defaultOpen={i === 0} />
+                  <EvolucionCard key={ev.id} evolucion={ev} historiaId={historia.id} historia={historia} defaultOpen={i === 0} />
                 ))}
               </div>
             </div>
