@@ -66,6 +66,7 @@ El root layout (`src/app/layout.tsx`) sólo inyecta fuentes, `<QueryProvider>` y
 - `/renovaciones` — Tab "Seguimientos" + tab "Recordatorios WA" con log de envíos
 - `/procedimientos` — Catálogo de tratamientos (solo admin/doctor)
 - `/plantillas` — Plantillas de WhatsApp con preview interactivo (solo admin/doctor)
+- `/campanas` — Campañas de remarketing masivo WA (solo admin/doctor). 8 filtros avanzados, envío two-step Chatwoot
 - `/configuracion` — Config del sistema (solo admin): gestión usuarios, datos clínica, recordatorios WA, permisos, audit log
 
 ## Supabase
@@ -96,8 +97,13 @@ npx supabase gen types typescript --project-id wnbamzjieowfqcowppxc > src/types/
 - `supabase/migration_v8.sql` — fix de trigger functions con `SECURITY DEFINER` para compatibilidad con RLS de Supabase
 - `supabase/migration_v9.sql` — permite a `recepcion` crear y editar `tratamientos_catalogo`
 - `supabase/migration_v10.sql` — sistema de permisos de acceso a pacientes: tabla `permisos_acceso`, RLS actualizado en `historias_clinicas`/`evoluciones_clinicas`/`fotos_antes_despues`, Realtime habilitado
+- `supabase/migration_v12.sql` — cooldown entre envíos + response tracking (respondido estado, respondio_at, índices)
+- `supabase/migration_v13.sql` — campañas WA: `campanas_wa` + `campana_destinatarios` + RLS
+- `supabase/migration_v14.sql` — FK a CASCADE para poder eliminar pacientes (evoluciones, recordatorios, campana_destinatarios)
+- `supabase/migration_v15.sql` — clasificación pacientes: `nivel_paciente` (verde/amarillo/rojo) + `nivel_atencion` (normal/precaucion/no_contactar) en tabla `pacientes`
+- `ALTER TABLE pacientes ALTER COLUMN fecha_nacimiento DROP NOT NULL` — fecha_nacimiento ahora opcional
 
-**Tablas principales**: `profiles`, `pacientes`, `citas`, `tratamientos_catalogo`, `historias_clinicas`, `evoluciones_clinicas`, `procedimientos_consulta`, `seguimientos_renovacion`, `recordatorios_log`, `fotos_antes_despues`, `audit_log`, `permisos_acceso`
+**Tablas principales**: `profiles`, `pacientes`, `citas`, `tratamientos_catalogo`, `historias_clinicas`, `evoluciones_clinicas`, `procedimientos_consulta`, `seguimientos_renovacion`, `recordatorios_log`, `fotos_antes_despues`, `audit_log`, `permisos_acceso`, `campanas_wa`, `campana_destinatarios`
 
 **Vistas**: `dashboard_stats`, `renovaciones_vista`
 
@@ -127,6 +133,47 @@ Visibilidad en sidebar por rol:
 - `admin`: todo + Configuración + Solicitudes de acceso
 
 **Permisos de edición en `/pacientes`**: solo `admin` y `doctor` ven los botones de editar y eliminar. Recepción no puede editar datos de pacientes desde la lista.
+
+**Protección de datos sensibles**: DNI y teléfono ocultos para recepción (y doctor) en toda la app. Solo admin ve estos datos. Componente `DatoMasked` en lista, `Lock + ••••••••` en detalle. `PrintHistoriaClinica` sí muestra DNI/teléfono (solo doctor/admin imprimen).
+
+**Usuarios del sistema:**
+
+| Nombre | Email | Rol |
+|---|---|---|
+| Juan Pablo Bazán | bazanjuanpa@gmail.com | admin |
+| Dra. Dennisse Arroyo | admin@clinicaarroyo.com | admin |
+| Dra. Dennisse Arroyo | doctorahc@clinicadennissearroyo.com | doctor |
+| Asistente Clínica | asistentedra.dennissearroyoo@gmail.com | recepcion |
+| María Michelot | (email desconocido) | recepcion |
+| Magaly | Mmarketing.brands@gmail.com | admin |
+
+## Clasificación de Pacientes (migration_v15)
+
+Campos nuevos en tabla `pacientes` para segmentación de campañas:
+
+- **`nivel_paciente`**: TEXT, default `verde`. Valores: `verde` | `amarillo` | `rojo`. Semáforo de comportamiento.
+- **`nivel_atencion`**: TEXT, default `normal`. Valores: `normal` | `precaucion` | `no_contactar`. Define si recibe campañas.
+- **`fecha_nacimiento`**: ahora NULLABLE (antes NOT NULL). Pacientes sin fecha registrada físicamente.
+
+**UI**: Sección "Clasificación" en `NuevoPacienteDrawer`, dot semáforo en header de `/pacientes/[id]`, filtros + indicadores en tabla de campañas.
+
+## Campañas de Remarketing (/campanas)
+
+Sistema para enviar templates masivos personalizados a pacientes seleccionados.
+
+**Tab "Nueva campaña"**: 3 pasos — seleccionar template, seleccionar pacientes (8 filtros avanzados), confirmar envío con estimado de costo.
+
+**8 filtros avanzados**: Sexo, Edad desde, Edad hasta, Distrito, Estado (activo/vip), Nivel paciente (semáforo), Nivel atención, País (Perú +51 vs Extranjero).
+
+**Tab "Historial & costos"**: Stats cards, lista expandible de campañas con detalle de destinatarios.
+
+**Tablas**: `campanas_wa`, `campana_destinatarios` (migration_v13). RLS: authenticated users SELECT/INSERT/UPDATE.
+**API**: `src/app/api/campaigns/send/route.ts` — two-step Chatwoot, 800ms delay entre envíos.
+**Costo**: $0.07 USD/msg (MARKETING Perú).
+
+## EditarConsultaDrawer
+
+Incluye sección colapsable "Historia clínica del paciente" con antecedentes pre-llenados del paciente. Al guardar cambios en historia, actualiza la historia base. (Antes solo tenía campos de evolución, reportaban que "salía vacío").
 
 ## Sistema de Permisos de Acceso a Pacientes
 
@@ -337,6 +384,10 @@ Bot automático que responde cuando un paciente hace clic en el botón Quick Rep
 8. ~~**Página de configuración**~~ — ✅ implementada (gestión usuarios, datos clínica, WA status, permisos, audit log)
 9. ~~**Impresión de historia clínica**~~ — ✅ botón "Imprimir" en tab Historia Clínica, genera PDF con datos del paciente + historia base + todas las evoluciones
 10. **Contrato de confidencialidad** — la Dra. requiere un acuerdo firmado por cada colaborador que acceda al sistema. Pendiente imprimir y firmar.
-11. **Esperar aprobación templates 30d y 7d** en Meta para activar el flujo completo de 3 recordatorios.
+11. ~~**Esperar aprobación templates 30d y 7d**~~ — ✅ Los 3 templates APPROVED (verificado 2026-05-11).
+12. ~~**Clasificación de pacientes**~~ — ✅ migration_v15: nivel_paciente (semáforo) + nivel_atencion + 8 filtros en campañas
+13. ~~**Fix EditarConsultaDrawer vacío**~~ — ✅ Ahora incluye sección colapsable "Historia clínica del paciente"
+14. **Automatización cumpleaños** — envío automático de saludo + promo el día del cumpleaños (pedido Magali)
+15. **Regenerar tipos Supabase** — `supabase gen types` para eliminar `as any` casts
 
 > Ver `PROYECTO.md` para la bitácora completa, arquitectura del sistema y notas técnicas detalladas.

@@ -351,7 +351,7 @@ export function NuevoPacienteDrawer({ open, onClose, onSuccess, paciente, canEdi
                 <Field label="Apellidos" required error={errors.apellidos?.message}>
                   <input {...register("apellidos")} placeholder="González" className="input-premium" />
                 </Field>
-                <Field label="DNI / Documento" required={canEditDni} error={canEditDni ? errors.dni?.message : undefined}>
+                <Field label="DNI / Documento" error={errors.dni?.message}>
                   {esEdicion && !canEditDni ? (
                     <div className="input-premium flex items-center gap-2.5 bg-muted/60 cursor-not-allowed select-none">
                       <Lock className="w-4 h-4 text-muted-foreground/40 shrink-0" />
