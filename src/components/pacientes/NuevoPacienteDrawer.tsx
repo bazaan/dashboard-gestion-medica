@@ -216,7 +216,8 @@ export function NuevoPacienteDrawer({ open, onClose, onSuccess, paciente, canEdi
       nombres:               data.nombres,
       apellidos:             data.apellidos,
       // Si el DNI está bloqueado, preservar el valor original de la DB
-      dni:                   (esEdicion && !canEditDni) ? (paciente?.dni ?? "") : data.dni,
+      // DNI vacío → null (evita conflicto de UNIQUE constraint con otros pacientes sin DNI)
+      dni:                   (esEdicion && !canEditDni) ? (paciente?.dni || null) : (data.dni || null),
       email:                 data.email || null,
       // Si el teléfono está bloqueado, preservar el valor original de la DB
       telefono:              phoneBloqueado ? (paciente?.telefono ?? "") : data.telefono,
