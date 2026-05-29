@@ -930,7 +930,7 @@ export default function CampanasPage() {
   }
 
   return (
-    <RoleGuard allowed={["admin", "doctor"]}>
+    <RoleGuard allowed={["admin", "doctor", "recepcion"]}>
     <div className="min-h-full bg-background">
       <header className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b border-border">
         <div className="flex items-center justify-between px-4 md:px-8 h-14 md:h-16">
