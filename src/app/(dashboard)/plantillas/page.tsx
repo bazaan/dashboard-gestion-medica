@@ -4,10 +4,11 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import {
   MessageSquareText, Copy, Check, ChevronDown, ChevronUp,
   Info, Clock, AlertTriangle, CheckCircle2, Smartphone, Phone,
-  Plus, Trash2, RefreshCw, Send, Loader2, X, Image, Video, FileText, Type,
+  Plus, Trash2, RefreshCw, Send, Loader2, X, Image, Video, FileText, Type, History,
 } from "lucide-react";
 import { toast } from "sonner";
 import { RoleGuard } from "@/components/RoleGuard";
+import { createClient } from "@/lib/supabase/client";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 type MetaTemplate = {
@@ -845,12 +846,218 @@ function CrearPlantillaDialog({ open, onClose, onCreated }: { open: boolean; onC
   );
 }
 
+// ── Historial de Envios ──────────────────────────────────────────────────────
+type RecordatorioLog = {
+  id: string;
+  tipo: string;
+  estado: string;
+  fecha_programada: string;
+  fecha_enviada: string | null;
+  error_msg: string | null;
+  respondio_at: string | null;
+  created_at: string;
+  paciente_id: string;
+};
+
+type PacienteMin = {
+  id: string;
+  nombres: string;
+  apellidos: string;
+  telefono: string | null;
+};
+
+function HistorialEnvios() {
+  const [logs, setLogs] = useState<(RecordatorioLog & { paciente_nombre?: string })[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filtroEstado, setFiltroEstado] = useState("todos");
+  const [filtroTipo, setFiltroTipo] = useState("todos");
+  const supabase = createClient();
+
+  useEffect(() => {
+    async function fetchLogs() {
+      setLoading(true);
+      const { data, error } = await (supabase as any)
+        .from("recordatorios_log")
+        .select("id, tipo, estado, fecha_programada, fecha_enviada, error_msg, respondio_at, created_at, paciente_id")
+        .order("created_at", { ascending: false })
+        .limit(200);
+
+      if (error || !data) {
+        setLoading(false);
+        return;
+      }
+
+      // Fetch patient names
+      const pacienteIds = [...new Set(data.map((d: any) => d.paciente_id).filter(Boolean))];
+      let pacientesMap: Record<string, string> = {};
+      if (pacienteIds.length > 0) {
+        const { data: pacientes } = await (supabase as any)
+          .from("pacientes")
+          .select("id, nombres, apellidos")
+          .in("id", pacienteIds);
+        if (pacientes) {
+          pacientes.forEach((p: PacienteMin) => {
+            pacientesMap[p.id] = `${p.nombres} ${p.apellidos}`.trim();
+          });
+        }
+      }
+
+      setLogs(data.map((d: any) => ({ ...d, paciente_nombre: pacientesMap[d.paciente_id] || "—" })));
+      setLoading(false);
+    }
+    fetchLogs();
+  }, []);
+
+  const filtered = logs.filter(l => {
+    if (filtroEstado !== "todos" && l.estado !== filtroEstado) return false;
+    if (filtroTipo !== "todos" && l.tipo !== filtroTipo) return false;
+    return true;
+  });
+
+  const stats = {
+    total: logs.length,
+    enviados: logs.filter(l => l.estado === "enviado").length,
+    pendientes: logs.filter(l => l.estado === "pendiente").length,
+    fallidos: logs.filter(l => l.estado === "fallido").length,
+    respondidos: logs.filter(l => l.estado === "respondido").length,
+  };
+
+  const estadoStyles: Record<string, string> = {
+    enviado: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    pendiente: "bg-amber-50 text-amber-600 border-amber-200",
+    fallido: "bg-red-50 text-red-600 border-red-200",
+    respondido: "bg-blue-50 text-blue-600 border-blue-200",
+  };
+  const estadoLabels: Record<string, string> = {
+    enviado: "Enviado",
+    pendiente: "Pendiente",
+    fallido: "Fallido",
+    respondido: "Respondido",
+  };
+  const tipoLabels: Record<string, string> = {
+    "30_dias": "30 dias",
+    "7_dias": "7 dias",
+    vencimiento: "Vencimiento",
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="w-6 h-6 animate-spin text-primary/60" />
+        <span className="ml-3 text-sm text-muted-foreground">Cargando historial...</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-5">
+      {/* Stats */}
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        {[
+          { label: "Total", value: stats.total, color: "text-foreground" },
+          { label: "Enviados", value: stats.enviados, color: "text-emerald-600" },
+          { label: "Pendientes", value: stats.pendientes, color: "text-amber-600" },
+          { label: "Fallidos", value: stats.fallidos, color: "text-red-600" },
+          { label: "Respondidos", value: stats.respondidos, color: "text-blue-600" },
+        ].map((s, i) => (
+          <div key={i} className="card-premium p-4 text-center">
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">{s.label}</p>
+            <p className={`text-2xl font-serif font-semibold mt-1 ${s.color}`}>{s.value}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Filters */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <select
+          value={filtroEstado}
+          onChange={e => setFiltroEstado(e.target.value)}
+          className="px-3 py-2 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/25"
+        >
+          <option value="todos">Todos los estados</option>
+          <option value="enviado">Enviados</option>
+          <option value="pendiente">Pendientes</option>
+          <option value="fallido">Fallidos</option>
+          <option value="respondido">Respondidos</option>
+        </select>
+        <select
+          value={filtroTipo}
+          onChange={e => setFiltroTipo(e.target.value)}
+          className="px-3 py-2 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/25"
+        >
+          <option value="todos">Todos los tipos</option>
+          <option value="30_dias">30 dias</option>
+          <option value="7_dias">7 dias</option>
+          <option value="vencimiento">Vencimiento</option>
+        </select>
+        <span className="text-xs text-muted-foreground">{filtered.length} resultados</span>
+      </div>
+
+      {/* Table */}
+      <div className="card-premium overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-border">
+                <th className="px-4 py-3 text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Paciente</th>
+                <th className="px-4 py-3 text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Tipo</th>
+                <th className="px-4 py-3 text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Estado</th>
+                <th className="px-4 py-3 text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Programado</th>
+                <th className="px-4 py-3 text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Enviado</th>
+                <th className="px-4 py-3 text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Error</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-4 py-12 text-center text-sm text-muted-foreground">
+                    No hay registros con estos filtros
+                  </td>
+                </tr>
+              ) : filtered.slice(0, 100).map(l => (
+                <tr key={l.id} className="border-b border-border/50 hover:bg-muted/20 transition-colors">
+                  <td className="px-4 py-3 text-sm font-medium">{l.paciente_nombre}</td>
+                  <td className="px-4 py-3">
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-violet-50 text-violet-700 border border-violet-200">
+                      {tipoLabels[l.tipo] || l.tipo}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${estadoStyles[l.estado] || "bg-gray-50 text-gray-600 border-gray-200"}`}>
+                      {estadoLabels[l.estado] || l.estado}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-xs text-muted-foreground font-mono">
+                    {l.fecha_programada ? new Date(l.fecha_programada + "T00:00:00").toLocaleDateString("es-PE", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
+                  </td>
+                  <td className="px-4 py-3 text-xs text-muted-foreground font-mono">
+                    {l.fecha_enviada ? new Date(l.fecha_enviada).toLocaleDateString("es-PE", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—"}
+                  </td>
+                  <td className="px-4 py-3 text-xs text-red-500 max-w-[200px] truncate" title={l.error_msg || ""}>
+                    {l.error_msg || "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {filtered.length > 100 && (
+          <div className="px-4 py-3 border-t border-border text-center text-xs text-muted-foreground">
+            Mostrando 100 de {filtered.length} registros
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Main Page ────────────────────────────────────────────────────────────────
 export default function PlantillasPage() {
   const [templates, setTemplates] = useState<MetaTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingName, setDeletingName] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [tab, setTab] = useState<"plantillas" | "historial">("plantillas");
 
   const fetchTemplates = useCallback(async () => {
     setLoading(true);
@@ -907,26 +1114,49 @@ export default function PlantillasPage() {
             <span className="font-serif text-sm md:text-base font-semibold">Plantillas de WhatsApp</span>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              onClick={fetchTemplates}
-              disabled={loading}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-muted hover:bg-muted/80 border border-border transition-colors disabled:opacity-50"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
-              Actualizar
-            </button>
-            <button
-              onClick={() => setCreateOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-primary text-white hover:bg-primary-hover transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              Nueva Plantilla
-            </button>
+            <div className="flex items-center bg-muted rounded-lg p-0.5 border border-border">
+              <button
+                onClick={() => setTab("plantillas")}
+                className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${tab === "plantillas" ? "bg-white shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                Plantillas
+              </button>
+              <button
+                onClick={() => setTab("historial")}
+                className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all flex items-center gap-1.5 ${tab === "historial" ? "bg-white shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                <History className="w-3.5 h-3.5" />
+                Historial
+              </button>
+            </div>
+            {tab === "plantillas" && (
+              <>
+                <button
+                  onClick={fetchTemplates}
+                  disabled={loading}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-muted hover:bg-muted/80 border border-border transition-colors disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
+                  Actualizar
+                </button>
+                <button
+                  onClick={() => setCreateOpen(true)}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-primary text-white hover:bg-primary-hover transition-colors"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Nueva
+                </button>
+              </>
+            )}
           </div>
         </div>
       </header>
 
       <div className="px-4 md:px-8 py-6 md:py-8 max-w-4xl mx-auto space-y-6">
+        {tab === "historial" ? (
+          <HistorialEnvios />
+        ) : (
+        <>
         <div className="fade-up">
           <p className="label-elegant mb-1.5">Meta Business Manager</p>
           <div className="flex items-end justify-between flex-wrap gap-2">
@@ -980,6 +1210,8 @@ export default function PlantillasPage() {
               />
             ))}
           </div>
+        )}
+      </>
         )}
       </div>
 
