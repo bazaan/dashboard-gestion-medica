@@ -177,31 +177,53 @@ function TabNuevaCampana({ onSent }: { onSent: () => void }) {
     fetchTratamientos();
   }, [fetchTemplates, fetchPatients, fetchTratamientos]);
 
-  // When procedimiento filter changes, fetch matching patient IDs
+  // When procedimiento filter changes, fetch matching patient IDs via join
   useEffect(() => {
     if (!filterProcedimiento) {
       setPacientesPorTratamiento(new Set());
       return;
     }
     (async () => {
-      // Get evolucion IDs that have this tratamiento
-      const { data: procs } = await (supabase as any)
+      // Use Supabase join: procedimientos_consulta -> evoluciones_clinicas -> paciente_id
+      const { data, error } = await (supabase as any)
         .from("procedimientos_consulta")
-        .select("evolucion_id")
+        .select("evolucion:evoluciones_clinicas!inner(paciente_id)")
         .eq("tratamiento_id", filterProcedimiento);
-      if (!procs || procs.length === 0) {
-        setPacientesPorTratamiento(new Set());
+
+      if (error || !data) {
+        console.error("Error fetching procedimientos:", error);
+        // Fallback: two-step query
+        const { data: procs } = await (supabase as any)
+          .from("procedimientos_consulta")
+          .select("evolucion_id")
+          .eq("tratamiento_id", filterProcedimiento);
+        if (!procs || procs.length === 0) {
+          setPacientesPorTratamiento(new Set());
+          return;
+        }
+        const evIds = procs.map((p: any) => p.evolucion_id).filter(Boolean);
+        if (evIds.length === 0) { setPacientesPorTratamiento(new Set()); return; }
+
+        // Batch in chunks of 50 to avoid URL length limits
+        const allPacienteIds = new Set<string>();
+        for (let i = 0; i < evIds.length; i += 50) {
+          const chunk = evIds.slice(i, i + 50);
+          const { data: evols } = await (supabase as any)
+            .from("evoluciones_clinicas")
+            .select("paciente_id")
+            .in("id", chunk);
+          if (evols) evols.forEach((e: any) => { if (e.paciente_id) allPacienteIds.add(e.paciente_id); });
+        }
+        setPacientesPorTratamiento(allPacienteIds);
         return;
       }
-      const evIds = procs.map((p: any) => p.evolucion_id);
-      // Get paciente IDs from those evoluciones
-      const { data: evols } = await (supabase as any)
-        .from("evoluciones_clinicas")
-        .select("paciente_id")
-        .in("id", evIds);
-      if (evols) {
-        setPacientesPorTratamiento(new Set(evols.map((e: any) => e.paciente_id)));
-      }
+
+      const ids = new Set<string>();
+      data.forEach((d: any) => {
+        const pacId = d.evolucion?.paciente_id;
+        if (pacId) ids.add(pacId);
+      });
+      setPacientesPorTratamiento(ids);
     })();
   }, [filterProcedimiento, supabase]);
 
