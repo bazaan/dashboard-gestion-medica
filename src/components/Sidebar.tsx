@@ -2,7 +2,7 @@
 
 import {
   LayoutDashboard, Users, Settings,
-  LogOut, ChevronRight, X, Menu, Bell, Syringe, MessageSquareText, Megaphone, Bot,
+  LogOut, ChevronRight, X, Menu, Bell, Syringe, MessageSquareText, Megaphone, Bot, ExternalLink,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -22,6 +22,7 @@ const NAV_LINKS = [
   { name: "Plantillas WA",  href: "/plantillas",     icon: MessageSquareText,   roles: ["admin", "doctor", "recepcion"] as UserRole[] },
   { name: "Campañas",       href: "/campanas",       icon: Megaphone,           roles: ["admin", "doctor", "recepcion"] as UserRole[] },
   { name: "Agente IA",      href: "/agente-ia",      icon: Bot,                 roles: ["admin"] as UserRole[] },
+  { name: "Chats",          href: "https://chats.alef.company/app/accounts/4/conversations",  icon: ExternalLink, roles: ["admin", "doctor", "recepcion"] as UserRole[], external: true },
   { name: "Config",         href: "/configuracion",  icon: Settings,            roles: ["admin"] as UserRole[] },
 ];
 
@@ -79,12 +80,15 @@ function NavContent({
         <nav className="px-4 py-2 space-y-0.5">
           <p className="label-elegant text-white/25 px-3 mb-3">Navegación</p>
           {visibleLinks.map((link) => {
-            const isActive = link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
+            const isExternal = (link as any).external;
+            const isActive = isExternal ? false : link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
             const Icon = link.icon;
             return (
               <Link
                 key={link.href}
                 href={link.href}
+                target={isExternal ? "_blank" : undefined}
+                rel={isExternal ? "noopener noreferrer" : undefined}
                 onClick={onClose}
                 className={`relative flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 font-medium text-sm group ${
                   isActive ? "bg-primary/20 text-white" : "text-white/55 hover:bg-white/6 hover:text-white/90"
