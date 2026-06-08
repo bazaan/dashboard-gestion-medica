@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 const WABA_ID = "3598875606929262";
 const META_API = `https://graph.facebook.com/v21.0/${WABA_ID}/message_templates`;
 
-// Token stored in Chatwoot inbox 65, account 4 provider_config.api_key
+// Token stored in Chatwoot inbox 80, account 4 provider_config.api_key
 // In production this should come from env, but for now we fetch it from Chatwoot
 async function getMetaToken(): Promise<string> {
   const CHATWOOT_TOKEN = "xBsW4FE3FCZdZbgXgdjrHfUA";
@@ -12,8 +12,8 @@ async function getMetaToken(): Promise<string> {
   });
   const data = await res.json();
   const inboxes = data?.payload ?? data;
-  const inbox = (inboxes as any[]).find((i: any) => i.id === 65);
-  if (!inbox) throw new Error("Inbox 65 not found");
+  const inbox = (inboxes as any[]).find((i: any) => i.id === 80);
+  if (!inbox) throw new Error("Inbox 80 not found");
   return inbox.provider_config?.api_key;
 }
 

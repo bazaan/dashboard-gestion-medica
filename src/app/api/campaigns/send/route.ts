@@ -4,7 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 const CHATWOOT_BASE = process.env.CHATWOOT_BASE_URL || "https://chats.alef.company";
 const CHATWOOT_TOKEN = process.env.CHATWOOT_API_TOKEN || "xBsW4FE3FCZdZbgXgdjrHfUA";
 const CHATWOOT_ACCOUNT = Number(process.env.CHATWOOT_ACCOUNT_ID || "4");
-const CHATWOOT_INBOX = Number(process.env.CHATWOOT_WA_INBOX_ID || "65");
+const CHATWOOT_INBOX = Number(process.env.CHATWOOT_WA_INBOX_ID || "80");
 
 // Costo por mensaje de template MARKETING en Peru (USD)
 const COSTO_POR_MENSAJE_USD = 0.07;

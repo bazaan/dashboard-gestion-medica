@@ -8,8 +8,8 @@ async function getMetaToken(): Promise<string> {
   });
   const data = await res.json();
   const inboxes = data?.payload ?? data;
-  const inbox = (inboxes as any[]).find((i: any) => i.id === 65);
-  if (!inbox) throw new Error("Inbox 65 not found");
+  const inbox = (inboxes as any[]).find((i: any) => i.id === 80);
+  if (!inbox) throw new Error("Inbox 80 not found");
   return inbox.provider_config?.api_key;
 }
 
