@@ -3,7 +3,7 @@
 import {
   Users, Bell, AlertTriangle, Syringe,
   ChevronRight, Plus, ArrowUpRight, Activity,
-  RefreshCw, Loader2, Clock, MessageCircle, Phone,
+  RefreshCw, Loader2, Clock, MessageCircle, Phone, ExternalLink,
 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -153,6 +153,25 @@ export default function Dashboard() {
           </p>
           <div className="gold-rule mt-5" />
         </div>
+
+        {/* CRM Button */}
+        <a
+          href="https://chats.alef.company/app/accounts/4/conversations"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="fade-up stagger-1 flex items-center justify-between w-full p-4 md:p-5 rounded-xl bg-gradient-to-r from-primary/10 to-primary/5 border border-primary/20 hover:border-primary/40 hover:from-primary/15 hover:to-primary/8 transition-all group cursor-pointer"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-primary/15 border border-primary/25 flex items-center justify-center shrink-0">
+              <MessageCircle className="w-5 h-5 text-primary" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-foreground">Panel de Mensajeria</p>
+              <p className="text-xs text-muted-foreground">WhatsApp e Instagram · Chatwoot CRM</p>
+            </div>
+          </div>
+          <ExternalLink className="w-4 h-4 text-primary/60 group-hover:text-primary transition-colors shrink-0" />
+        </a>
 
         {/* Stats */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-5">
