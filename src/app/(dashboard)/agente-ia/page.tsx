@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import {
-  Bot, Instagram, MessageCircle, Power, PowerOff,
+  Bot, Camera, MessageCircle, Power, PowerOff,
   Activity, MessageSquare, ArrowRightLeft, AlertCircle,
   RefreshCw, Loader2, Zap, Clock,
 } from "lucide-react";
@@ -199,7 +199,7 @@ export default function AgenteIAPage() {
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-3">
                       <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${health.ig_enabled ? "bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-200" : "bg-gray-50 border border-gray-200"}`}>
-                        <Instagram className={`w-5 h-5 ${health.ig_enabled ? "text-purple-600" : "text-gray-400"}`} />
+                        <Camera className={`w-5 h-5 ${health.ig_enabled ? "text-purple-600" : "text-gray-400"}`} />
                       </div>
                       <div>
                         <p className="text-sm font-semibold">Instagram</p>
