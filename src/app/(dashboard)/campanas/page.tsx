@@ -127,7 +127,11 @@ function TabNuevaCampana({ onSent }: { onSent: () => void }) {
   const [filterNivel, setFilterNivel] = useState("");
   const [filterAtencion, setFilterAtencion] = useState("");
   const [filterPais, setFilterPais] = useState("");
+  const [filterProcedimiento, setFilterProcedimiento] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
+
+  const [tratamientos, setTratamientos] = useState<{ id: string; nombre: string }[]>([]);
+  const [pacientesPorTratamiento, setPacientesPorTratamiento] = useState<Set<string>>(new Set());
 
   const [defaultTratamiento, setDefaultTratamiento] = useState("");
   const [sending, setSending] = useState(false);
@@ -158,10 +162,48 @@ function TabNuevaCampana({ onSent }: { onSent: () => void }) {
     setLoadingPatients(false);
   }, [supabase]);
 
+  const fetchTratamientos = useCallback(async () => {
+    const { data } = await (supabase as any)
+      .from("tratamientos_catalogo")
+      .select("id, nombre")
+      .eq("is_active", true)
+      .order("nombre");
+    setTratamientos(data || []);
+  }, [supabase]);
+
   useEffect(() => {
     fetchTemplates();
     fetchPatients();
-  }, [fetchTemplates, fetchPatients]);
+    fetchTratamientos();
+  }, [fetchTemplates, fetchPatients, fetchTratamientos]);
+
+  // When procedimiento filter changes, fetch matching patient IDs
+  useEffect(() => {
+    if (!filterProcedimiento) {
+      setPacientesPorTratamiento(new Set());
+      return;
+    }
+    (async () => {
+      // Get evolucion IDs that have this tratamiento
+      const { data: procs } = await (supabase as any)
+        .from("procedimientos_consulta")
+        .select("evolucion_id")
+        .eq("tratamiento_id", filterProcedimiento);
+      if (!procs || procs.length === 0) {
+        setPacientesPorTratamiento(new Set());
+        return;
+      }
+      const evIds = procs.map((p: any) => p.evolucion_id);
+      // Get paciente IDs from those evoluciones
+      const { data: evols } = await (supabase as any)
+        .from("evoluciones_clinicas")
+        .select("paciente_id")
+        .in("id", evIds);
+      if (evols) {
+        setPacientesPorTratamiento(new Set(evols.map((e: any) => e.paciente_id)));
+      }
+    })();
+  }, [filterProcedimiento, supabase]);
 
   function calcAge(fechaNac: string | null): number | null {
     if (!fechaNac) return null;
@@ -181,7 +223,7 @@ function TabNuevaCampana({ onSent }: { onSent: () => void }) {
     return [...set].sort();
   }, [patients]);
 
-  const activeFilterCount = [filterEstado, filterSexo, filterEdadMin, filterEdadMax, filterDistrito, filterNivel, filterAtencion, filterPais].filter(Boolean).length;
+  const activeFilterCount = [filterEstado, filterSexo, filterEdadMin, filterEdadMax, filterDistrito, filterNivel, filterAtencion, filterPais, filterProcedimiento].filter(Boolean).length;
 
   const filteredPatients = useMemo(() => {
     let list = patients;
@@ -208,8 +250,10 @@ function TabNuevaCampana({ onSent }: { onSent: () => void }) {
     if (filterAtencion) list = list.filter(p => (p.nivel_atencion || "normal") === filterAtencion);
     if (filterPais === "peru") list = list.filter(p => !p.telefono || p.telefono.startsWith("+51") || p.telefono.startsWith("51") || /^9\d{8}$/.test(p.telefono));
     if (filterPais === "extranjero") list = list.filter(p => p.telefono && !p.telefono.startsWith("+51") && !p.telefono.startsWith("51") && !/^9\d{8}$/.test(p.telefono));
+    if (filterProcedimiento && pacientesPorTratamiento.size > 0) list = list.filter(p => pacientesPorTratamiento.has(p.id));
+    else if (filterProcedimiento && pacientesPorTratamiento.size === 0) list = [];
     return list;
-  }, [patients, searchQuery, filterEstado, filterSexo, filterEdadMin, filterEdadMax, filterDistrito, filterNivel, filterAtencion, filterPais]);
+  }, [patients, searchQuery, filterEstado, filterSexo, filterEdadMin, filterEdadMax, filterDistrito, filterNivel, filterAtencion, filterPais, filterProcedimiento, pacientesPorTratamiento]);
 
   useEffect(() => {
     if (selectAll) setSelectedIds(new Set(filteredPatients.map(p => p.id)));
@@ -491,6 +535,15 @@ function TabNuevaCampana({ onSent }: { onSent: () => void }) {
                   <option value="extranjero">Extranjero</option>
                 </select>
               </div>
+              <div className="sm:col-span-2">
+                <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Procedimiento realizado</label>
+                <select value={filterProcedimiento} onChange={e => setFilterProcedimiento(e.target.value)} className="input-premium w-full">
+                  <option value="">Todos los procedimientos</option>
+                  {tratamientos.map(t => (
+                    <option key={t.id} value={t.id}>{t.nombre}</option>
+                  ))}
+                </select>
+              </div>
             </div>
             {activeFilterCount > 0 && (
               <div className="flex flex-wrap gap-1.5 pt-1">
@@ -534,6 +587,12 @@ function TabNuevaCampana({ onSent }: { onSent: () => void }) {
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-primary/10 text-primary border border-primary/20">
                     {filterPais === "peru" ? "Peru" : "Extranjero"}
                     <button onClick={() => setFilterPais("")}><X className="w-2.5 h-2.5" /></button>
+                  </span>
+                )}
+                {filterProcedimiento && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-violet-50 text-violet-700 border border-violet-200">
+                    {tratamientos.find(t => t.id === filterProcedimiento)?.nombre || "Procedimiento"}
+                    <button onClick={() => setFilterProcedimiento("")}><X className="w-2.5 h-2.5" /></button>
                   </span>
                 )}
               </div>
