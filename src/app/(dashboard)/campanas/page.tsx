@@ -177,55 +177,23 @@ function TabNuevaCampana({ onSent }: { onSent: () => void }) {
     fetchTratamientos();
   }, [fetchTemplates, fetchPatients, fetchTratamientos]);
 
-  // When procedimiento filter changes, fetch matching patient IDs via join
+  // When procedimiento filter changes, fetch matching patient IDs via server API (bypasses RLS)
   useEffect(() => {
     if (!filterProcedimiento) {
       setPacientesPorTratamiento(new Set());
       return;
     }
     (async () => {
-      // Use Supabase join: procedimientos_consulta -> evoluciones_clinicas -> paciente_id
-      const { data, error } = await (supabase as any)
-        .from("procedimientos_consulta")
-        .select("evolucion:evoluciones_clinicas!inner(paciente_id)")
-        .eq("tratamiento_id", filterProcedimiento);
-
-      if (error || !data) {
-        console.error("Error fetching procedimientos:", error);
-        // Fallback: two-step query
-        const { data: procs } = await (supabase as any)
-          .from("procedimientos_consulta")
-          .select("evolucion_id")
-          .eq("tratamiento_id", filterProcedimiento);
-        if (!procs || procs.length === 0) {
-          setPacientesPorTratamiento(new Set());
-          return;
-        }
-        const evIds = procs.map((p: any) => p.evolucion_id).filter(Boolean);
-        if (evIds.length === 0) { setPacientesPorTratamiento(new Set()); return; }
-
-        // Batch in chunks of 50 to avoid URL length limits
-        const allPacienteIds = new Set<string>();
-        for (let i = 0; i < evIds.length; i += 50) {
-          const chunk = evIds.slice(i, i + 50);
-          const { data: evols } = await (supabase as any)
-            .from("evoluciones_clinicas")
-            .select("paciente_id")
-            .in("id", chunk);
-          if (evols) evols.forEach((e: any) => { if (e.paciente_id) allPacienteIds.add(e.paciente_id); });
-        }
-        setPacientesPorTratamiento(allPacienteIds);
-        return;
+      try {
+        const res = await fetch(`/staff/api/patients-by-procedure?tratamiento_id=${filterProcedimiento}`);
+        const data = await res.json();
+        setPacientesPorTratamiento(new Set(data.patient_ids || []));
+      } catch (e) {
+        console.error("Error fetching patients by procedure:", e);
+        setPacientesPorTratamiento(new Set());
       }
-
-      const ids = new Set<string>();
-      data.forEach((d: any) => {
-        const pacId = d.evolucion?.paciente_id;
-        if (pacId) ids.add(pacId);
-      });
-      setPacientesPorTratamiento(ids);
     })();
-  }, [filterProcedimiento, supabase]);
+  }, [filterProcedimiento]);
 
   function calcAge(fechaNac: string | null): number | null {
     if (!fechaNac) return null;
