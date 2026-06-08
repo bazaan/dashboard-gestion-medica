@@ -2,7 +2,7 @@
 
 import {
   LayoutDashboard, Users, Settings,
-  LogOut, ChevronRight, X, Menu, Bell, Syringe, MessageSquareText, Megaphone,
+  LogOut, ChevronRight, X, Menu, Bell, Syringe, MessageSquareText, Megaphone, Bot,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -21,6 +21,7 @@ const NAV_LINKS = [
   { name: "Procedimientos", href: "/procedimientos", icon: Syringe,             roles: ["admin", "doctor"] as UserRole[] },
   { name: "Plantillas WA",  href: "/plantillas",     icon: MessageSquareText,   roles: ["admin", "doctor", "recepcion"] as UserRole[] },
   { name: "Campañas",       href: "/campanas",       icon: Megaphone,           roles: ["admin", "doctor", "recepcion"] as UserRole[] },
+  { name: "Agente IA",      href: "/agente-ia",      icon: Bot,                 roles: ["admin"] as UserRole[] },
   { name: "Config",         href: "/configuracion",  icon: Settings,            roles: ["admin"] as UserRole[] },
 ];
 
