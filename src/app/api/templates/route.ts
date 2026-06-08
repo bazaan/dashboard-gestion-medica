@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const WABA_ID = "3598875606929262";
+const WABA_ID = "2332582080485933";
 const META_API = `https://graph.facebook.com/v21.0/${WABA_ID}/message_templates`;
 
 // Token stored in Chatwoot inbox 80, account 4 provider_config.api_key
