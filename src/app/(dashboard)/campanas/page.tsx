@@ -132,6 +132,7 @@ function TabNuevaCampana({ onSent }: { onSent: () => void }) {
 
   const [tratamientos, setTratamientos] = useState<{ id: string; nombre: string }[]>([]);
   const [pacientesPorTratamiento, setPacientesPorTratamiento] = useState<Set<string>>(new Set());
+  const [enrichedData, setEnrichedData] = useState<Record<string, { procedimientos: string[]; renovaciones: { estado: string; dias: number | null; tratamiento: string }[] }>>({});
 
   const [defaultTratamiento, setDefaultTratamiento] = useState("");
   const [sending, setSending] = useState(false);
@@ -171,11 +172,22 @@ function TabNuevaCampana({ onSent }: { onSent: () => void }) {
     setTratamientos(data || []);
   }, [supabase]);
 
+  const fetchEnriched = useCallback(async () => {
+    try {
+      const res = await fetch("/staff/api/patients-enriched");
+      if (res.ok) {
+        const data = await res.json();
+        setEnrichedData(data);
+      }
+    } catch { /* ignore */ }
+  }, []);
+
   useEffect(() => {
     fetchTemplates();
     fetchPatients();
     fetchTratamientos();
-  }, [fetchTemplates, fetchPatients, fetchTratamientos]);
+    fetchEnriched();
+  }, [fetchTemplates, fetchPatients, fetchTratamientos, fetchEnriched]);
 
   // When procedimiento filter changes, fetch matching patient IDs via server API (bypasses RLS)
   useEffect(() => {
@@ -602,6 +614,8 @@ function TabNuevaCampana({ onSent }: { onSent: () => void }) {
                   <th className="text-left px-3 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider hidden lg:table-cell">Edad</th>
                   <th className="text-left px-3 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider hidden md:table-cell">Distrito</th>
                   <th className="text-left px-3 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider hidden sm:table-cell">Telefono</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider hidden lg:table-cell">Procedimientos</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider hidden lg:table-cell">Renovacion</th>
                   <th className="text-left px-3 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider hidden md:table-cell">Estado</th>
                 </tr>
               </thead>
@@ -644,6 +658,44 @@ function TabNuevaCampana({ onSent }: { onSent: () => void }) {
                         <span className="text-red-400 text-xs">Sin telefono</span>
                       )}
                     </td>
+                    <td className="px-3 py-2.5 hidden lg:table-cell max-w-[200px]">
+                      {enrichedData[p.id]?.procedimientos?.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {enrichedData[p.id].procedimientos.slice(0, 3).map((proc, i) => (
+                            <span key={i} className="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-violet-50 text-violet-700 border border-violet-200 truncate max-w-[120px]" title={proc}>
+                              {proc}
+                            </span>
+                          ))}
+                          {enrichedData[p.id].procedimientos.length > 3 && (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-gray-100 text-gray-500">
+                              +{enrichedData[p.id].procedimientos.length - 3}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground/40 text-xs">—</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2.5 hidden lg:table-cell">
+                      {enrichedData[p.id]?.renovaciones?.length > 0 ? (
+                        <div className="flex flex-col gap-0.5">
+                          {enrichedData[p.id].renovaciones.slice(0, 2).map((r, i) => (
+                            <span key={i} className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-semibold ${
+                              r.estado === "vencido"
+                                ? "bg-red-50 text-red-600 border border-red-200"
+                                : r.estado === "proximo"
+                                  ? "bg-amber-50 text-amber-600 border border-amber-200"
+                                  : "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                            }`} title={r.tratamiento}>
+                              {r.estado === "vencido" ? `Vencido ${Math.abs(r.dias || 0)}d` :
+                               r.estado === "proximo" ? `${r.dias}d` : "Vigente"}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground/40 text-xs">—</span>
+                      )}
+                    </td>
                     <td className="px-3 py-2.5 hidden md:table-cell">
                       <div className="flex items-center gap-1.5">
                         <span className={`w-2 h-2 rounded-full shrink-0 ${
@@ -664,7 +716,7 @@ function TabNuevaCampana({ onSent }: { onSent: () => void }) {
                   </tr>
                 ))}
                 {filteredPatients.length === 0 && (
-                  <tr><td colSpan={6} className="px-3 py-8 text-center text-sm text-muted-foreground">No se encontraron pacientes</td></tr>
+                  <tr><td colSpan={8} className="px-3 py-8 text-center text-sm text-muted-foreground">No se encontraron pacientes</td></tr>
                 )}
               </tbody>
             </table>
