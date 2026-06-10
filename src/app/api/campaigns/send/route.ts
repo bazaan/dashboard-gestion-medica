@@ -181,11 +181,24 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      // Actualizar totales cada 5 envios (por si timeout de serverless)
+      if (campanaId && (enviados + fallidos + omitidos) % 5 === 0) {
+        await (supabase as any)
+          .from("campanas_wa")
+          .update({
+            enviados,
+            fallidos,
+            omitidos,
+            costo_estimado: +(enviados * COSTO_POR_MENSAJE_USD).toFixed(4),
+          })
+          .eq("id", campanaId);
+      }
+
       // Delay entre envios para evitar rate limiting de Meta
       await new Promise(r => setTimeout(r, 800));
     }
 
-    // Actualizar totales y costo de la campana
+    // Actualizar totales finales
     if (campanaId) {
       await (supabase as any)
         .from("campanas_wa")
@@ -193,7 +206,7 @@ export async function POST(req: NextRequest) {
           enviados,
           fallidos,
           omitidos,
-          costo_estimado: enviados * COSTO_POR_MENSAJE_USD,
+          costo_estimado: +(enviados * COSTO_POR_MENSAJE_USD).toFixed(4),
         })
         .eq("id", campanaId);
     }
