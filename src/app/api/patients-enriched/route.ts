@@ -38,15 +38,15 @@ export async function GET(req: NextRequest) {
     // 3. Get renovacion status from renovaciones_vista
     const { data: renovaciones } = await supabase
       .from("renovaciones_vista")
-      .select("paciente_id, estado, dias_restantes, nombre_tratamiento");
+      .select("paciente_id, estado_actual, dias_para_vencer, tratamiento_nombre");
 
     const renoByPatient: Record<string, { estado: string; dias: number | null; tratamiento: string }[]> = {};
     (renovaciones || []).forEach((r: any) => {
       if (!renoByPatient[r.paciente_id]) renoByPatient[r.paciente_id] = [];
       renoByPatient[r.paciente_id].push({
-        estado: r.estado,
-        dias: r.dias_restantes,
-        tratamiento: r.nombre_tratamiento || "",
+        estado: r.estado_actual,
+        dias: r.dias_para_vencer,
+        tratamiento: r.tratamiento_nombre || "",
       });
     });
 

@@ -260,7 +260,7 @@ function TabNuevaCampana({ onSent }: { onSent: () => void }) {
         const renos = enrichedData[p.id]?.renovaciones;
         if (!renos || renos.length === 0) return filterRenovacion === "sin_renovacion";
         if (filterRenovacion === "vencido") return renos.some(r => r.estado === "vencido");
-        if (filterRenovacion === "proximo") return renos.some(r => r.estado === "proximo");
+        if (filterRenovacion === "proximo") return renos.some(r => r.estado === "proximo_vencer" || r.estado === "proximo");
         if (filterRenovacion === "vigente") return renos.some(r => r.estado === "vigente");
         if (filterRenovacion === "sin_renovacion") return false;
         return true;
