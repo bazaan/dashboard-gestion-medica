@@ -5,9 +5,14 @@ const CHATWOOT_BASE = process.env.CHATWOOT_BASE_URL || "https://chats.alef.compa
 const CHATWOOT_TOKEN = process.env.CHATWOOT_API_TOKEN || "xBsW4FE3FCZdZbgXgdjrHfUA";
 const CHATWOOT_ACCOUNT = Number(process.env.CHATWOOT_ACCOUNT_ID || "4");
 const CHATWOOT_INBOX = Number(process.env.CHATWOOT_WA_INBOX_ID || "80");
+const META_PHONE_ID = process.env.META_PHONE_NUMBER_ID || "1125723850624383";
 
 // Costo por mensaje de template MARKETING en Peru (USD)
 const COSTO_POR_MENSAJE_USD = 0.07;
+
+// Templates con header image necesitan enviarse via Meta API directa
+// porque Chatwoot no soporta processed_params con image headers
+const TEMPLATES_WITH_IMAGE_HEADER = new Set(["recordatorio_neauvia_hd"]);
 
 function normalizePhone(phone: string): string | null {
   if (!phone) return null;
@@ -50,15 +55,83 @@ async function getOrCreateContact(phone: string, name: string): Promise<number> 
   throw new Error("No se pudo crear contacto");
 }
 
-// Two-step: crear conversacion + enviar template como mensaje
-async function sendTemplateMessage(
+// Cache del Meta API token (se obtiene del inbox de Chatwoot)
+let _metaToken: string | null = null;
+async function getMetaToken(): Promise<string> {
+  if (_metaToken) return _metaToken;
+  const data = await chatwootGet(`/inboxes/${CHATWOOT_INBOX}`);
+  const inbox = data.payload ?? data;
+  _metaToken = inbox.provider_config?.api_key || "";
+  return _metaToken;
+}
+
+// Cache de templates con sus headers (para saber qué imagen usar)
+let _templateHeaders: Record<string, string> | null = null;
+async function getTemplateHeaderImage(templateName: string): Promise<string | null> {
+  if (!_templateHeaders) {
+    _templateHeaders = {};
+    const data = await chatwootGet(`/inboxes/${CHATWOOT_INBOX}`);
+    const inbox = data.payload ?? data;
+    for (const t of inbox.message_templates || []) {
+      for (const c of t.components || []) {
+        if (c.type === "HEADER" && c.format === "IMAGE" && c.example?.header_handle?.[0]) {
+          _templateHeaders[t.name] = c.example.header_handle[0];
+        }
+      }
+    }
+  }
+  return _templateHeaders[templateName] || null;
+}
+
+// Envio via Meta API directa (para templates con image header)
+async function sendViaMetaApi(
+  phone: string,
+  templateName: string,
+  language: string,
+  params: Record<string, string>,
+  headerImageUrl: string,
+): Promise<void> {
+  const token = await getMetaToken();
+  const res = await fetch(`https://graph.facebook.com/v21.0/${META_PHONE_ID}/messages`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      to: phone.replace("+", ""),
+      type: "template",
+      template: {
+        name: templateName,
+        language: { code: language },
+        components: [
+          {
+            type: "header",
+            parameters: [{ type: "image", image: { link: headerImageUrl } }],
+          },
+          {
+            type: "body",
+            parameters: [
+              { type: "text", text: params.nombre || params["1"] || "" },
+              { type: "text", text: params.tratamiento || params["2"] || "" },
+            ],
+          },
+        ],
+      },
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Meta API ${res.status}: ${text.slice(0, 300)}`);
+  }
+}
+
+// Two-step Chatwoot: crear conversacion + enviar template como mensaje
+async function sendViaChatwoot(
   contactId: number,
   templateName: string,
   language: string,
   params: Record<string, string>,
   content: string,
 ): Promise<void> {
-  // Step 1: crear o encontrar conversacion
   const convData = await chatwootPost("/conversations", {
     inbox_id: CHATWOOT_INBOX,
     contact_id: contactId,
@@ -66,8 +139,6 @@ async function sendTemplateMessage(
   const convId = convData.payload?.id ?? convData.id;
   if (!convId) throw new Error("No se pudo crear conversacion");
 
-  // Step 2: enviar template como mensaje
-  // Templates usan params POSITIONAL ({{1}}, {{2}}) no NAMED
   await chatwootPost(`/conversations/${convId}/messages`, {
     message_type: "outgoing",
     content,
@@ -75,12 +146,28 @@ async function sendTemplateMessage(
       name: templateName,
       category: "MARKETING",
       language,
-      processed_params: {
-        "1": params.nombre || params["1"] || "",
-        "2": params.tratamiento || params["2"] || "",
-      },
+      processed_params: params,
     },
   });
+}
+
+// Punto de entrada: elige Meta API directa o Chatwoot segun el template
+async function sendTemplateMessage(
+  contactId: number,
+  phone: string,
+  templateName: string,
+  language: string,
+  params: Record<string, string>,
+  content: string,
+): Promise<void> {
+  if (TEMPLATES_WITH_IMAGE_HEADER.has(templateName)) {
+    const headerImg = await getTemplateHeaderImage(templateName);
+    if (headerImg) {
+      await sendViaMetaApi(phone, templateName, language, params, headerImg);
+      return;
+    }
+  }
+  await sendViaChatwoot(contactId, templateName, language, params, content);
 }
 
 export async function POST(req: NextRequest) {
@@ -157,7 +244,7 @@ export async function POST(req: NextRequest) {
         };
         const content = `Hola ${params.nombre}, te escribimos de la Clinica Dra. Dennisse Arroyo sobre ${params.tratamiento}.`;
 
-        await sendTemplateMessage(contactId, template_name, template_language, params, content);
+        await sendTemplateMessage(contactId, phone, template_name, template_language, params, content);
 
         results.push({ id: patient.id, nombre: fullName, status: "sent" });
         enviados++;
