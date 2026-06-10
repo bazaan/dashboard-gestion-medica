@@ -128,6 +128,7 @@ function TabNuevaCampana({ onSent }: { onSent: () => void }) {
   const [filterAtencion, setFilterAtencion] = useState("");
   const [filterPais, setFilterPais] = useState("");
   const [filterProcedimiento, setFilterProcedimiento] = useState("");
+  const [filterRenovacion, setFilterRenovacion] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   const [tratamientos, setTratamientos] = useState<{ id: string; nombre: string }[]>([]);
@@ -225,7 +226,7 @@ function TabNuevaCampana({ onSent }: { onSent: () => void }) {
     return [...set].sort();
   }, [patients]);
 
-  const activeFilterCount = [filterEstado, filterSexo, filterEdadMin, filterEdadMax, filterDistrito, filterNivel, filterAtencion, filterPais, filterProcedimiento].filter(Boolean).length;
+  const activeFilterCount = [filterEstado, filterSexo, filterEdadMin, filterEdadMax, filterDistrito, filterNivel, filterAtencion, filterPais, filterProcedimiento, filterRenovacion].filter(Boolean).length;
 
   const filteredPatients = useMemo(() => {
     let list = patients;
@@ -254,8 +255,19 @@ function TabNuevaCampana({ onSent }: { onSent: () => void }) {
     if (filterPais === "extranjero") list = list.filter(p => p.telefono && !p.telefono.startsWith("+51") && !p.telefono.startsWith("51") && !/^9\d{8}$/.test(p.telefono));
     if (filterProcedimiento && pacientesPorTratamiento.size > 0) list = list.filter(p => pacientesPorTratamiento.has(p.id));
     else if (filterProcedimiento && pacientesPorTratamiento.size === 0) list = [];
+    if (filterRenovacion) {
+      list = list.filter(p => {
+        const renos = enrichedData[p.id]?.renovaciones;
+        if (!renos || renos.length === 0) return filterRenovacion === "sin_renovacion";
+        if (filterRenovacion === "vencido") return renos.some(r => r.estado === "vencido");
+        if (filterRenovacion === "proximo") return renos.some(r => r.estado === "proximo");
+        if (filterRenovacion === "vigente") return renos.some(r => r.estado === "vigente");
+        if (filterRenovacion === "sin_renovacion") return false;
+        return true;
+      });
+    }
     return list;
-  }, [patients, searchQuery, filterEstado, filterSexo, filterEdadMin, filterEdadMax, filterDistrito, filterNivel, filterAtencion, filterPais, filterProcedimiento, pacientesPorTratamiento]);
+  }, [patients, searchQuery, filterEstado, filterSexo, filterEdadMin, filterEdadMax, filterDistrito, filterNivel, filterAtencion, filterPais, filterProcedimiento, pacientesPorTratamiento, filterRenovacion, enrichedData]);
 
   useEffect(() => {
     if (selectAll) setSelectedIds(new Set(filteredPatients.map(p => p.id)));
@@ -537,13 +549,23 @@ function TabNuevaCampana({ onSent }: { onSent: () => void }) {
                   <option value="extranjero">Extranjero</option>
                 </select>
               </div>
-              <div className="sm:col-span-2">
+              <div>
                 <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Procedimiento realizado</label>
                 <select value={filterProcedimiento} onChange={e => setFilterProcedimiento(e.target.value)} className="input-premium w-full">
                   <option value="">Todos los procedimientos</option>
                   {tratamientos.map(t => (
                     <option key={t.id} value={t.id}>{t.nombre}</option>
                   ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Estado renovacion</label>
+                <select value={filterRenovacion} onChange={e => setFilterRenovacion(e.target.value)} className="input-premium w-full">
+                  <option value="">Todos</option>
+                  <option value="vencido">Vencido</option>
+                  <option value="proximo">Proximo a vencer</option>
+                  <option value="vigente">Vigente</option>
+                  <option value="sin_renovacion">Sin renovacion</option>
                 </select>
               </div>
             </div>
@@ -595,6 +617,17 @@ function TabNuevaCampana({ onSent }: { onSent: () => void }) {
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-violet-50 text-violet-700 border border-violet-200">
                     {tratamientos.find(t => t.id === filterProcedimiento)?.nombre || "Procedimiento"}
                     <button onClick={() => setFilterProcedimiento("")}><X className="w-2.5 h-2.5" /></button>
+                  </span>
+                )}
+                {filterRenovacion && (
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
+                    filterRenovacion === "vencido" ? "bg-red-50 text-red-700 border-red-200" :
+                    filterRenovacion === "proximo" ? "bg-amber-50 text-amber-700 border-amber-200" :
+                    filterRenovacion === "vigente" ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
+                    "bg-gray-50 text-gray-600 border-gray-200"
+                  }`}>
+                    {filterRenovacion === "vencido" ? "Vencido" : filterRenovacion === "proximo" ? "Proximo a vencer" : filterRenovacion === "vigente" ? "Vigente" : "Sin renovacion"}
+                    <button onClick={() => setFilterRenovacion("")}><X className="w-2.5 h-2.5" /></button>
                   </span>
                 )}
               </div>
