@@ -67,6 +67,7 @@ async function sendTemplateMessage(
   if (!convId) throw new Error("No se pudo crear conversacion");
 
   // Step 2: enviar template como mensaje
+  // Templates usan params POSITIONAL ({{1}}, {{2}}) no NAMED
   await chatwootPost(`/conversations/${convId}/messages`, {
     message_type: "outgoing",
     content,
@@ -74,7 +75,10 @@ async function sendTemplateMessage(
       name: templateName,
       category: "MARKETING",
       language,
-      processed_params: params,
+      processed_params: {
+        "1": params.nombre || params["1"] || "",
+        "2": params.tratamiento || params["2"] || "",
+      },
     },
   });
 }
