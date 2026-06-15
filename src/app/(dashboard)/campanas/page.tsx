@@ -320,7 +320,7 @@ function TabNuevaCampana({ onSent }: { onSent: () => void }) {
 
         toast.info(`Enviando batch ${batchNum}/${totalBatches}...`);
 
-        const res = await fetch("/staff/api/campaigns/send", {
+        const batchRes: Response = await fetch("/staff/api/campaigns/send", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -331,8 +331,8 @@ function TabNuevaCampana({ onSent }: { onSent: () => void }) {
             campana_id: campanaId,
           }),
         });
-        const data = await res.json();
-        if (!res.ok) {
+        const data = await batchRes.json();
+        if (!batchRes.ok) {
           toast.error(`Error en batch ${batchNum}: ${data.error || "Error"}`);
           continue;
         }
