@@ -10,9 +10,14 @@ const META_PHONE_ID = process.env.META_PHONE_NUMBER_ID || "1125723850624383";
 // Costo por mensaje de template MARKETING en Peru (USD)
 const COSTO_POR_MENSAJE_USD = 0.07;
 
-// Templates con header image necesitan enviarse via Meta API directa
+// Templates con header image: se envian via Meta API directa
 // porque Chatwoot no soporta processed_params con image headers
-const TEMPLATES_WITH_IMAGE_HEADER = new Set(["recordatorio_neauvia_hd"]);
+// Las imagenes deben estar en URLs publicas permanentes (no WhatsApp CDN que expira)
+const TEMPLATE_HEADER_IMAGES: Record<string, string> = {
+  recordatorio_rejuran: "http://173.249.59.135:8092/static/rejuran_header.jpg",
+  recordatorio_neauvia_hd: "http://173.249.59.135:8092/static/neauvia_header.jpg",
+};
+const TEMPLATES_WITH_IMAGE_HEADER = new Set(Object.keys(TEMPLATE_HEADER_IMAGES));
 
 function normalizePhone(phone: string): string | null {
   if (!phone) return null;
@@ -151,7 +156,7 @@ async function sendViaChatwoot(
   });
 }
 
-// Punto de entrada: elige Meta API directa o Chatwoot segun el template
+// Punto de entrada: elige Meta API directa (templates con imagen) o Chatwoot (sin imagen)
 async function sendTemplateMessage(
   contactId: number,
   phone: string,
@@ -161,11 +166,9 @@ async function sendTemplateMessage(
   content: string,
 ): Promise<void> {
   if (TEMPLATES_WITH_IMAGE_HEADER.has(templateName)) {
-    const headerImg = await getTemplateHeaderImage(templateName);
-    if (headerImg) {
-      await sendViaMetaApi(phone, templateName, language, params, headerImg);
-      return;
-    }
+    const headerImg = TEMPLATE_HEADER_IMAGES[templateName];
+    await sendViaMetaApi(phone, templateName, language, params, headerImg);
+    return;
   }
   await sendViaChatwoot(contactId, templateName, language, params, content);
 }
