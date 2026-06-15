@@ -255,21 +255,28 @@ export async function POST(req: NextRequest) {
         };
         const content = `Hola ${params.nombre}, te escribimos de la Clinica Dra. Dennisse Arroyo sobre ${params.tratamiento}.`;
 
+        const canal = TEMPLATES_WITH_IMAGE_HEADER.has(template_name) ? "meta_api" : "chatwoot";
         await sendTemplateMessage(contactId, phone, template_name, template_language, params, content);
 
+        const logEntry = {
+          campana_id: campanaId,
+          paciente_id: patient.id,
+          nombre: fullName,
+          telefono: phone,
+          estado: "enviado",
+          error_msg: `[${canal}] template=${template_name} params=${JSON.stringify(params)}`,
+        };
         results.push({ id: patient.id, nombre: fullName, status: "sent" });
         enviados++;
         if (campanaId) {
-          await (supabase as any).from("campana_destinatarios").insert({
-            campana_id: campanaId,
-            paciente_id: patient.id,
-            nombre: fullName,
-            telefono: phone,
-            estado: "enviado",
-          });
+          await (supabase as any).from("campana_destinatarios").insert(logEntry);
         }
+
+        console.log(`[CAMPAIGN] SENT ${canal} | ${fullName} | ${phone} | ${template_name}`);
       } catch (err: any) {
-        results.push({ id: patient.id, nombre: fullName, status: "failed", error: err.message });
+        const canal = TEMPLATES_WITH_IMAGE_HEADER.has(template_name) ? "meta_api" : "chatwoot";
+        const errorDetail = `[${canal}] ${err.message}`;
+        results.push({ id: patient.id, nombre: fullName, status: "failed", error: errorDetail });
         fallidos++;
         if (campanaId) {
           await (supabase as any).from("campana_destinatarios").insert({
@@ -278,9 +285,11 @@ export async function POST(req: NextRequest) {
             nombre: fullName,
             telefono: phone,
             estado: "fallido",
-            error_msg: (err.message || "").slice(0, 500),
+            error_msg: errorDetail.slice(0, 500),
           });
         }
+
+        console.error(`[CAMPAIGN] FAIL ${canal} | ${fullName} | ${phone} | ${template_name} | ${err.message}`);
       }
 
       // Delay entre envios para evitar rate limiting de Meta
