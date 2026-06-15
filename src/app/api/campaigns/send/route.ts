@@ -170,6 +170,8 @@ async function sendTemplateMessage(
   await sendViaChatwoot(contactId, templateName, language, params, content);
 }
 
+// POST /api/campaigns/send — envía un batch pequeño (max 5 pacientes)
+// El frontend orquesta múltiples requests para campañas grandes
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -179,37 +181,43 @@ export async function POST(req: NextRequest) {
       patient_ids,
       default_tratamiento,
       campaign_name,
+      campana_id: existingCampanaId,
     } = body;
 
     if (!template_name || !patient_ids?.length) {
       return NextResponse.json({ error: "template_name and patient_ids required" }, { status: 400 });
     }
 
+    // Limitar batch a 5 pacientes por request (Netlify timeout safe)
+    const batchIds = patient_ids.slice(0, 5);
+
     const supabase = createAdminClient();
 
-    // Fetch patients
+    // Fetch patients del batch
     const { data: patients, error } = await (supabase as any)
       .from("pacientes")
       .select("id, nombres, apellidos, telefono")
-      .in("id", patient_ids);
+      .in("id", batchIds);
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // Crear registro de campana
-    const { data: campana } = await (supabase as any)
-      .from("campanas_wa")
-      .insert({
-        nombre: campaign_name || `Campaña ${template_name} — ${new Date().toLocaleDateString("es-PE")}`,
-        template_name,
-        template_lang: template_language,
-        total: patients.length,
-      })
-      .select("id")
-      .single();
-
-    const campanaId = campana?.id;
+    // Crear campana solo si no existe (primer batch)
+    let campanaId = existingCampanaId;
+    if (!campanaId) {
+      const { data: campana } = await (supabase as any)
+        .from("campanas_wa")
+        .insert({
+          nombre: campaign_name || `Campaña ${template_name} — ${new Date().toLocaleDateString("es-PE")}`,
+          template_name,
+          template_lang: template_language,
+          total: patient_ids.length,
+        })
+        .select("id")
+        .single();
+      campanaId = campana?.id;
+    }
 
     const results: { id: string; nombre: string; status: string; error?: string }[] = [];
     let enviados = 0;
@@ -272,32 +280,30 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // Actualizar totales cada 5 envios (por si timeout de serverless)
-      if (campanaId && (enviados + fallidos + omitidos) % 5 === 0) {
-        await (supabase as any)
-          .from("campanas_wa")
-          .update({
-            enviados,
-            fallidos,
-            omitidos,
-            costo_estimado: +(enviados * COSTO_POR_MENSAJE_USD).toFixed(4),
-          })
-          .eq("id", campanaId);
-      }
-
       // Delay entre envios para evitar rate limiting de Meta
       await new Promise(r => setTimeout(r, 800));
     }
 
-    // Actualizar totales finales
+    // Actualizar totales de la campana (acumulativo)
     if (campanaId) {
+      // Leer totales actuales y sumar este batch
+      const { data: current } = await (supabase as any)
+        .from("campanas_wa")
+        .select("enviados, fallidos, omitidos")
+        .eq("id", campanaId)
+        .single();
+
+      const totalEnviados = (current?.enviados || 0) + enviados;
+      const totalFallidos = (current?.fallidos || 0) + fallidos;
+      const totalOmitidos = (current?.omitidos || 0) + omitidos;
+
       await (supabase as any)
         .from("campanas_wa")
         .update({
-          enviados,
-          fallidos,
-          omitidos,
-          costo_estimado: +(enviados * COSTO_POR_MENSAJE_USD).toFixed(4),
+          enviados: totalEnviados,
+          fallidos: totalFallidos,
+          omitidos: totalOmitidos,
+          costo_estimado: +(totalEnviados * COSTO_POR_MENSAJE_USD).toFixed(4),
         })
         .eq("id", campanaId);
     }

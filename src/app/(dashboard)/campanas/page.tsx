@@ -306,23 +306,53 @@ function TabNuevaCampana({ onSent }: { onSent: () => void }) {
     setCostoResult(null);
 
     try {
-      const res = await fetch("/staff/api/campaigns/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          template_name: selectedTemplate.name,
-          template_language: selectedTemplate.language,
-          patient_ids: [...selectedIds],
-          default_tratamiento: defaultTratamiento || undefined,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) { toast.error(data.error || "Error al enviar"); return; }
+      const allIds = [...selectedIds];
+      const BATCH_SIZE = 5;
+      const allResults: SendResult[] = [];
+      let totalSent = 0, totalFailed = 0, totalSkipped = 0;
+      let campanaId: string | null = null;
 
-      setResults(data.results);
-      setCostoResult(data.costo_estimado_usd);
-      toast.success(`Enviados: ${data.sent} | Fallidos: ${data.failed} | Sin tel: ${data.skipped}`);
-      onSent(); // refresh history
+      // Enviar en batches de 5 para evitar timeout de Netlify
+      for (let i = 0; i < allIds.length; i += BATCH_SIZE) {
+        const batchIds = allIds.slice(i, i + BATCH_SIZE);
+        const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+        const totalBatches = Math.ceil(allIds.length / BATCH_SIZE);
+
+        toast.info(`Enviando batch ${batchNum}/${totalBatches}...`);
+
+        const res = await fetch("/staff/api/campaigns/send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            template_name: selectedTemplate.name,
+            template_language: selectedTemplate.language,
+            patient_ids: batchIds,
+            default_tratamiento: defaultTratamiento || undefined,
+            campana_id: campanaId,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          toast.error(`Error en batch ${batchNum}: ${data.error || "Error"}`);
+          continue;
+        }
+
+        if (data.campana_id) campanaId = data.campana_id;
+        allResults.push(...(data.results || []));
+        totalSent += data.sent || 0;
+        totalFailed += data.failed || 0;
+        totalSkipped += data.skipped || 0;
+
+        // Pausa entre batches para no saturar Meta
+        if (i + BATCH_SIZE < allIds.length) {
+          await new Promise(r => setTimeout(r, 1000));
+        }
+      }
+
+      setResults(allResults);
+      setCostoResult(+(totalSent * 0.07).toFixed(4));
+      toast.success(`Enviados: ${totalSent} | Fallidos: ${totalFailed} | Sin tel: ${totalSkipped}`);
+      onSent();
     } catch {
       toast.error("Error de conexion");
     } finally {
