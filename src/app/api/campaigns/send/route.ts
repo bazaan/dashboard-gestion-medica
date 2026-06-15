@@ -61,7 +61,7 @@ async function getOrCreateContact(phone: string, name: string): Promise<number> 
 }
 
 // Cache del Meta API token (se obtiene del inbox de Chatwoot)
-let _metaToken: string | null = null;
+let _metaToken = "";
 async function getMetaToken(): Promise<string> {
   if (_metaToken) return _metaToken;
   const data = await chatwootGet(`/inboxes/${CHATWOOT_INBOX}`);
